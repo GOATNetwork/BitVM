@@ -480,7 +480,7 @@ impl G1Projective {
 
         for _ in 1..(Fq::N_BITS) / 2 {
             script_bytes.extend(loop_code.clone());
-            script_bytes.extend(script!{ OP_RESERVED1 }.as_bytes());
+            script_bytes.extend(script!{ OP_RESERVED1 }.as_bytes().to_vec());
         }
 
         script_bytes.extend_from_slice(
