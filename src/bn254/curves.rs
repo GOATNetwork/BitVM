@@ -480,6 +480,7 @@ impl G1Projective {
 
         for _ in 1..(Fq::N_BITS) / 2 {
             script_bytes.extend(loop_code.clone());
+            script_bytes.extend(script!{ OP_RESERVED1 }.as_bytes());
         }
 
         script_bytes.extend_from_slice(
@@ -788,6 +789,7 @@ mod test {
             };
             println!("curves::test_scalar_mul = {} bytes", script.len());
             let exec_result = execute_script(script);
+            exec_result.stats.visualize_stack();
             // println!("res: {:100}", exec_result);
             assert!(exec_result.success);
         }
