@@ -195,6 +195,27 @@ mod test {
         let exec_result = execute_script(script);
         assert!(!exec_result.success);
     }
+    
+    #[test]
+    fn test_script_chunk() {
+        let script = script! {
+            for i in 0..100 {
+                { i }
+            }
+            OP_RESERVED1
+            for i in 0..100 {
+                { i }
+            }
+            for _ in 0..200 {
+                OP_DROP
+            }
+            OP_TRUE
+        };
+        let exec_result = execute_script(script);
+        println!("{}", exec_result);
+        exec_result.stats.visualize_stack();
+        assert!(exec_result.success);
+    }
 
     #[test]
     fn test_script_execute() {
