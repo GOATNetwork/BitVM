@@ -18,6 +18,7 @@ use crate::bridge::helper::generate_stub_outpoint;
 pub async fn create_and_mine_kick_off_tx(
     client: &BitVMClient,
     operator_context: &OperatorContext,
+    compressed_statement: &[u8],
 ) -> (Transaction, Txid) {
     let input_amount_raw = INITIAL_AMOUNT + FEE_AMOUNT;
     let input_amount = Amount::from_sat(input_amount_raw);
@@ -33,7 +34,7 @@ pub async fn create_and_mine_kick_off_tx(
         outpoint: kick_off_funding_outpoint,
         amount: input_amount,
     };
-    let kick_off = KickOffTransaction::new(&operator_context, kick_off_input);
+    let kick_off = KickOffTransaction::new(&operator_context, kick_off_input, compressed_statement);
     let kick_off_tx = kick_off.finalize();
     let kick_off_tx_id = kick_off_tx.compute_txid();
 

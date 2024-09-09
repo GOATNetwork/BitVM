@@ -85,6 +85,7 @@ impl TaprootConnector for ConnectorC {
     }
 }
 
+
 // Leaf[i] for some i in 1,2,…1000: spendable by multisig of OPK and VPK[1…N] plus the condition that f_{i}(z_{i-1})!=z_i
 fn disprove_leaf() -> DisproveLeaf {
     DisproveLeaf {

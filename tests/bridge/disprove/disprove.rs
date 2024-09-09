@@ -20,7 +20,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_should_be_able_to_submit_disprove_tx_successfully() {
-        let (client, _, operator_context, verifier_context, _, _, _, connector_c, _, _, _, _, _, _) =
+        let (client, _, operator_context, verifier_context, _, _, _, connector_c, _, _, _, _, _, _, _, _) =
             setup_test().await;
 
         let amount_0 = Amount::from_sat(DUST_AMOUNT);
@@ -59,7 +59,7 @@ mod tests {
     #[tokio::test]
     async fn test_should_be_able_to_submit_disprove_tx_with_verifier_added_to_output_successfully()
     {
-        let (client, _, operator_context, verifier_context, _, _, _, connector_c, _, _, _, _, _, _) =
+        let (client, _, operator_context, verifier_context, _, _, _, connector_c, _, _, _, _, _, _, _, _) =
             setup_test().await;
 
         let amount_0 = Amount::from_sat(DUST_AMOUNT);

@@ -3,6 +3,8 @@ use bitcoin::{
     secp256k1::All,
     Network, PublicKey, XOnlyPublicKey,
 };
+use crate::signatures::winternitz::{self, PublicKey as W_PublicKey};
+use crate::bridge::commitment;
 
 use super::base::{generate_keys_from_secret, BaseContext};
 
@@ -16,6 +18,9 @@ pub struct OperatorContext {
 
     pub n_of_n_public_key: PublicKey,
     pub n_of_n_taproot_public_key: XOnlyPublicKey,
+
+    pub operator_commitment_pubkey: W_PublicKey,
+    pub operator_commitment_seckey: [u8; 20],
 }
 
 impl BaseContext for OperatorContext {
@@ -33,6 +38,9 @@ impl OperatorContext {
         let (secp, keypair, public_key, taproot_public_key) =
             generate_keys_from_secret(network, operator_secret);
 
+        let operator_commitment_pubkey = commitment::seed_to_pubkey(operator_secret.as_bytes());
+        let operator_commitment_seckey = commitment::seed_to_secret(operator_secret.as_bytes());
+
         OperatorContext {
             network,
             secp,
@@ -43,6 +51,9 @@ impl OperatorContext {
 
             n_of_n_public_key: n_of_n_public_key.clone(),
             n_of_n_taproot_public_key: n_of_n_taproot_public_key.clone(),
+
+            operator_commitment_pubkey,
+            operator_commitment_seckey,
         }
     }
 }

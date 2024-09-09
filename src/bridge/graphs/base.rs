@@ -20,6 +20,8 @@ pub const WITHDRAWER_SECRET: &str =
 
 pub const EVM_ADDRESS: &str = "0x0000000000000000000000000000000000000000";
 
+pub const OPERATOR_STATEMENT: [u8; 21] = [0xa; 21];
+
 pub trait BaseGraph {
     fn network(&self) -> Network;
     fn id(&self) -> &String;

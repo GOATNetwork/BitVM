@@ -295,7 +295,7 @@ impl BitVMClient {
         // Attempt to broadcast refund tx
     }
 
-    pub async fn create_peg_out_graph(&mut self, peg_in_graph_id: &str, kickoff_input: Input) {
+    pub async fn create_peg_out_graph(&mut self, peg_in_graph_id: &str, kickoff_input: Input, compressed_statement: &[u8]) {
         if self.operator_context.is_none() {
             panic!("Operator context must be initialized");
         }
@@ -324,6 +324,7 @@ impl BitVMClient {
             self.operator_context.as_ref().unwrap(),
             peg_in_graph.unwrap(),
             kickoff_input,
+            compressed_statement,
         );
 
         // peg_out_graph.kick_off(&self.esplora).await;

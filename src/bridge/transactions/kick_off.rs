@@ -3,11 +3,13 @@ use bitcoin::{
     Witness,
 };
 use serde::{Deserialize, Serialize};
+use crate::treepp::*;
+use crate::bridge::{connectors::connector_k, hash_chain};
 
 use super::{
     super::{
         connectors::{
-            connector::*, connector_1::Connector1, connector_a::ConnectorA, connector_b::ConnectorB,
+            connector::*, connector_1::Connector1, connector_a::ConnectorA, connector_b::ConnectorB, connector_k::ConnectorK
         },
         contexts::operator::OperatorContext,
         graphs::base::{DUST_AMOUNT, FEE_AMOUNT},
@@ -16,6 +18,8 @@ use super::{
     base::*,
     pre_signed::*,
 };
+
+
 
 #[derive(Serialize, Deserialize, Eq, PartialEq)]
 pub struct KickOffTransaction {
@@ -37,7 +41,7 @@ impl PreSignedTransaction for KickOffTransaction {
 }
 
 impl KickOffTransaction {
-    pub fn new(context: &OperatorContext, operator_input: Input) -> Self {
+    pub fn new(context: &OperatorContext, input0: Input, compressed_statement: &[u8]) -> Self {
         let connector_1 = Connector1::new(context.network, &context.operator_public_key);
         let connector_a = ConnectorA::new(
             context.network,
@@ -45,17 +49,11 @@ impl KickOffTransaction {
             &context.n_of_n_taproot_public_key,
         );
         let connector_b = ConnectorB::new(context.network, &context.n_of_n_taproot_public_key);
+        let connector_k = ConnectorK::new(context.network, &context.operator_public_key, &context.operator_commitment_pubkey);
 
-        // TODO: Include commit y
-        // TODO: doesn't that mean we need to include an inscription for commit Y, so we need another TXN before this one?
-        let _input0 = TxIn {
-            previous_output: operator_input.outpoint,
-            script_sig: ScriptBuf::new(),
-            sequence: Sequence::MAX,
-            witness: Witness::default(),
-        };
+        let _input0 = connector_k.generate_tx_in(&input0);
 
-        let available_input_amount = operator_input.amount - Amount::from_sat(FEE_AMOUNT);
+        let available_input_amount = input0.amount - Amount::from_sat(FEE_AMOUNT);
 
         let _output0 = TxOut {
             value: Amount::from_sat(DUST_AMOUNT),
@@ -72,6 +70,14 @@ impl KickOffTransaction {
             script_pubkey: connector_b.generate_taproot_address().script_pubkey(),
         };
 
+        let statement = &compressed_statement[1..];
+        let round = compressed_statement[0];
+        let sig_script = hash_chain::sign_result(&context.operator_commitment_seckey, statement, round as u32);
+        let stack_script = hash_chain::push_stack_script(statement, round as u32);
+        let commit_y_script = script! {
+            { hash_chain::commitment_script_unlock(sig_script, stack_script, 0) }
+        };
+
         let mut this = KickOffTransaction {
             tx: Transaction {
                 version: bitcoin::transaction::Version(2),
@@ -80,14 +86,14 @@ impl KickOffTransaction {
                 output: vec![_output0, _output1, _output2],
             },
             prev_outs: vec![TxOut {
-                value: operator_input.amount,
+                value: input0.amount,
                 script_pubkey: generate_pay_to_pubkey_script_address(
                     context.network,
                     &context.operator_public_key,
                 )
-                .script_pubkey(), // TODO: Add address of Commit y
+                .script_pubkey(), 
             }],
-            prev_scripts: vec![generate_pay_to_pubkey_script(&context.operator_public_key)],
+            prev_scripts: vec![commit_y_script.compile()],
         };
 
         this.sign_input0(context);

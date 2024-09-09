@@ -30,7 +30,9 @@ async fn test_take2_success() {
         _,
         _,
         _,
+        _,
         evm_address,
+        _,
     ) = setup_test().await;
 
     // peg-in confirm

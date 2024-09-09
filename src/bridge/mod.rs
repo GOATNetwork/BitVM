@@ -6,3 +6,5 @@ pub mod graphs;
 pub mod scripts;
 pub mod serialization;
 pub mod transactions;
+pub mod commitment;
+pub mod hash_chain;

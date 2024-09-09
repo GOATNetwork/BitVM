@@ -12,7 +12,7 @@ use std::fmt::{Display, Formatter, Result as FmtResult};
 use crate::bridge::{
     constants::{NUM_BLOCKS_PER_2_WEEKS, NUM_BLOCKS_PER_4_WEEKS},
     contexts::{base::BaseContext, verifier::VerifierContext},
-    transactions::base::{BaseTransaction, InputWithScript},
+    transactions::{base::{BaseTransaction, InputWithScript}, kick_off},
 };
 
 use super::{
@@ -23,6 +23,7 @@ use super::{
             challenge::ChallengeTransaction, disprove::DisproveTransaction,
             kick_off::KickOffTransaction, peg_out::PegOutTransaction,
             pre_signed::PreSignedTransaction, take1::Take1Transaction, take2::Take2Transaction,
+            pre_kickoff::PreKickOffTransaction,
         },
     },
     base::{get_block_height, verify_if_not_mined, verify_tx_result, BaseGraph, GRAPH_VERSION},
@@ -109,6 +110,7 @@ pub struct PegOutGraph {
 
     peg_in_graph_id: String,
     peg_in_confirm_txid: Txid,
+    pre_kickoff_transaction: PreKickOffTransaction,
     kick_off_transaction: KickOffTransaction,
     take1_transaction: Take1Transaction,
     challenge_transaction: ChallengeTransaction,
@@ -134,8 +136,21 @@ impl BaseGraph for PegOutGraph {
 }
 
 impl PegOutGraph {
-    pub fn new(context: &OperatorContext, peg_in_graph: &PegInGraph, kickoff_input: Input) -> Self {
-        let kick_off_transaction = KickOffTransaction::new(context, kickoff_input);
+    pub fn new(context: &OperatorContext, peg_in_graph: &PegInGraph, kickoff_input: Input, compressed_statement: &[u8]) -> Self {
+        let pre_kickoff_transaction = PreKickOffTransaction::new(context, kickoff_input);
+        let pre_kickoff_txid = pre_kickoff_transaction.tx().compute_txid();
+        let kick_off_vout0 = 0;
+        let kick_off_transaction = KickOffTransaction::new(
+            context, 
+            Input {
+                outpoint: OutPoint {
+                    txid: pre_kickoff_txid,
+                    vout: kick_off_vout0.to_u32().unwrap(),
+                },
+                amount: pre_kickoff_transaction.tx().output[kick_off_vout0].value,
+            },
+            compressed_statement
+        );
         let kick_off_txid = kick_off_transaction.tx().compute_txid();
 
         let peg_in_confirm_transaction = peg_in_graph.peg_in_confirm_transaction_ref();
@@ -272,6 +287,7 @@ impl PegOutGraph {
             n_of_n_presigned: false,
             peg_in_graph_id: peg_in_graph.id().clone(),
             peg_in_confirm_txid,
+            pre_kickoff_transaction,
             kick_off_transaction,
             take1_transaction,
             challenge_transaction,
