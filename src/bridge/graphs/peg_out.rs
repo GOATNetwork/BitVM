@@ -136,7 +136,7 @@ impl BaseGraph for PegOutGraph {
 }
 
 impl PegOutGraph {
-    pub fn new(context: &OperatorContext, peg_in_graph: &PegInGraph, kickoff_input: Input, compressed_statement: &[u8]) -> Self {
+    pub fn new(context: &OperatorContext, peg_in_graph: &PegInGraph, kickoff_input: Input, statement: &[u8]) -> Self {
         let pre_kickoff_transaction = PreKickOffTransaction::new(context, kickoff_input);
         let pre_kickoff_txid = pre_kickoff_transaction.tx().compute_txid();
         let kick_off_vout0 = 0;
@@ -149,7 +149,7 @@ impl PegOutGraph {
                 },
                 amount: pre_kickoff_transaction.tx().output[kick_off_vout0].value,
             },
-            compressed_statement
+            statement
         );
         let kick_off_txid = kick_off_transaction.tx().compute_txid();
 

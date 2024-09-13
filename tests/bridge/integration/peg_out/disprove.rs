@@ -30,12 +30,12 @@ async fn test_disprove_success() {
         _,
         _,
         _,
-        compressed_statement,
+        statement,
     ) = setup_test().await;
 
     // kick-off
     let (kick_off_tx, kick_off_tx_id) =
-        create_and_mine_kick_off_tx(&client, &operator_context, &compressed_statement).await;
+        create_and_mine_kick_off_tx(&client, &operator_context, &statement).await;
 
     // assert
     let assert_kick_off_outpoint = OutPoint {

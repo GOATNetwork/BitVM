@@ -16,19 +16,21 @@
 //
 
 use crate::treepp::*;
+use bitcoin::Witness;
 use bitcoin::hashes::{hash160, Hash};
 use hex::decode as hex_decode;
+use hex::encode as hex_encode;
 
 /// Bits per digit
-const LOG_D: u32 = 4;
+pub const LOG_D: u32 = 4;
 /// Digits are base d+1
 pub const D: u32 = (1 << LOG_D) - 1;
 /// Number of digits of the message
-const N0: u32 = 40;
+pub const N0: u32 = 40;
 /// Number of digits of the checksum.  N1 = ⌈log_{D+1}(D*N0)⌉ + 1
-const N1: usize = 4;
+pub const N1: usize = 4;
 /// Total number of digits to be signed
-const N: u32 = N0 + N1 as u32;
+pub const N: u32 = N0 + N1 as u32;
 /// The public key type
 pub type PublicKey = [[u8; 20]; N as usize];
 
@@ -133,6 +135,45 @@ pub fn sign(secret_key: &str, message_bytes: &[u8]) -> Script {
     }
 
     sign_digits(secret_key, message_digits)
+}
+
+pub fn sig_witness(witness: &mut Witness, secret_key: &str, message_bytes: &[u8]) {
+    // Convert message to digits
+    let mut message_digits = [0u8; 20 * 2 as usize];
+    for (digits, byte) in message_digits.chunks_mut(2).zip(message_bytes) {
+        digits[0] = byte & 0b00001111;
+        digits[1] = byte >> 4;
+    }
+
+    let mut checksum_digits = to_digits::<N1>(checksum(message_digits)).to_vec();
+    checksum_digits.append(&mut message_digits.to_vec());
+
+    for i in 0..N {
+        let digit_index = i;
+        let message_digit = checksum_digits[(N-1-i) as usize];
+
+        let mut secret_i = match hex_decode(secret_key) {
+            Ok(bytes) => bytes,
+            Err(_) => panic!("Invalid hex string"),
+        };
+    
+        secret_i.push(digit_index as u8);
+    
+        let mut hash = hash160::Hash::hash(&secret_i);
+    
+        for _ in 0..message_digit {
+            hash = hash160::Hash::hash(&hash[..]);
+        }
+    
+        let hash_bytes = hash.as_byte_array().to_vec();
+
+        witness.push(hash_bytes);
+        if message_digit != 0u8 {
+            witness.push([message_digit as u8]);
+        } else {
+            witness.push([]);
+        }
+    }
 }
 
 pub fn checksig_verify(public_key: &PublicKey) -> Script {

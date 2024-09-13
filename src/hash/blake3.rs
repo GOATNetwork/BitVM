@@ -1,6 +1,7 @@
 #![allow(non_snake_case)]
 use std::collections::HashMap;
 
+use bitcoin::opcodes::all::{OP_RESERVED, OP_RETURN};
 use bitcoin::script;
 
 use crate::pseudo::push_to_stack;

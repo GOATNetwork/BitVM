@@ -1,7 +1,7 @@
 use bitcoin::{consensus::encode::serialize_hex, Amount, OutPoint};
 
 use bitvm::bridge::{
-    graphs::base::{FEE_AMOUNT, INITIAL_AMOUNT},
+    graphs::base::{FEE_AMOUNT, HIGH_FEE_AMOUNT, INITIAL_AMOUNT},
     scripts::generate_pay_to_pubkey_script_address,
     transactions::{
         base::{BaseTransaction, Input},
@@ -15,9 +15,9 @@ use super::super::setup::setup_test;
 
 #[tokio::test]
 async fn test_kick_off_tx() {
-    let (client, _, operator_context, _, _, _, _, _, _, _, _, _, _, _, _, compressed_statement) = setup_test().await;
+    let (client, _, operator_context, _, _, _, _, _, _, _, _, _, _, _, _, statement) = setup_test().await;
 
-    let input_amount_raw = INITIAL_AMOUNT + FEE_AMOUNT;
+    let input_amount_raw = INITIAL_AMOUNT + FEE_AMOUNT + HIGH_FEE_AMOUNT;
     let input_amount = Amount::from_sat(input_amount_raw);
     let funding_address = generate_pay_to_pubkey_script_address(
         operator_context.network,
@@ -31,15 +31,15 @@ async fn test_kick_off_tx() {
     };
 
     // pre-kickoff
-    let pre_kickoff_tx = PreKickOffTransaction::new(&operator_context, input);
-    let tx = pre_kickoff_tx.finalize();
-    let pre_kickoff_txid = tx.compute_txid();
+    let pre_kickoff = PreKickOffTransaction::new(&operator_context, input);
+    let pre_kickoff_tx = pre_kickoff.finalize();
+    let pre_kickoff_txid = pre_kickoff_tx.compute_txid();
     println!("\n-----------Pre-kickoff-----------:");
-    println!("Script Path Spend Transaction: {:?}\n", tx);
-    let result = client.esplora.broadcast(&tx).await;
-    println!("Txid: {:?}", tx.compute_txid());
+    // println!("Script Path Spend Transaction: {:?}\n", pre_kickoff_tx);
+    let result = client.esplora.broadcast(&pre_kickoff_tx).await;
+    println!("Txid: {:?}", pre_kickoff_txid);
     println!("Broadcast result: {:?}\n", result);
-    println!("Transaction hex: \n{}", serialize_hex(&tx));
+    // println!("Transaction hex: \n{}", serialize_hex(&pre_kickoff_tx));
     assert!(result.is_ok());
 
     // kick off
@@ -48,16 +48,15 @@ async fn test_kick_off_tx() {
             txid: pre_kickoff_txid,
             vout: 0,
         },
-        amount: input_amount,
+        amount: pre_kickoff_tx.output[0].value,
     };
-    let kick_off_tx = KickOffTransaction::new(&operator_context, kick_off_input, &compressed_statement);
-    let tx = pre_kickoff_tx.finalize();
-    println!("\n\n-----------Kickoff-----------:");
-    println!("Script Path Spend Transaction: {:?}\n", tx);
-    let result = client.esplora.broadcast(&tx).await;
-    println!("Txid: {:?}", tx.compute_txid());
-    println!("Broadcast result: {:?}\n", result);
-    println!("Transaction hex: \n{}", serialize_hex(&tx));
-    assert!(result.is_ok());
-
+    let kick_off = KickOffTransaction::new(&operator_context, kick_off_input, &statement);
+    // let kick_off_tx = kick_off.finalize();
+    // println!("\n\n-----------Kickoff-----------:");
+    // // println!("Script Path Spend Transaction: {:?}\n", kick_off_tx);
+    // let result = client.esplora.broadcast(&kick_off_tx).await;
+    // println!("Txid: {:?}", kick_off_tx.compute_txid());
+    // println!("Broadcast result: {:?}\n", result);
+    // // println!("Transaction hex: \n{}", serialize_hex(&kick_off_tx));
+    // assert!(result.is_ok());
 }

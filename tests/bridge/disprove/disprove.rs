@@ -7,7 +7,7 @@ mod tests {
     };
 
     use bitvm::bridge::{
-        connectors::connector::TaprootConnector,
+        connectors::{connector::TaprootConnector, connector_k},
         graphs::base::{DUST_AMOUNT, FEE_AMOUNT, INITIAL_AMOUNT},
         scripts::generate_pay_to_pubkey_script,
         transactions::{
@@ -20,7 +20,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_should_be_able_to_submit_disprove_tx_successfully() {
-        let (client, _, operator_context, verifier_context, _, _, _, connector_c, _, _, _, _, _, _, _, _) =
+        let (client, _, operator_context, verifier_context, _, _, _, connector_c, _, _, _, _, _, connector_3, _, _) =
             setup_test().await;
 
         let amount_0 = Amount::from_sat(DUST_AMOUNT);

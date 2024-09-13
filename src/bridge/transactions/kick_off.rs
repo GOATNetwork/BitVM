@@ -1,18 +1,19 @@
 use bitcoin::{
-    absolute, consensus, Amount, EcdsaSighashType, ScriptBuf, Sequence, Transaction, TxIn, TxOut,
-    Witness,
+    absolute, consensus, witness, Amount, EcdsaSighashType, ScriptBuf, Sequence, Transaction, TxIn, TxOut, Witness
 };
 use serde::{Deserialize, Serialize};
+use crate::bridge::graphs::base::HIGH_FEE_AMOUNT;
 use crate::treepp::*;
-use crate::bridge::{connectors::connector_k, hash_chain};
+use crate::bridge::{connectors::connector_k, hash_chain, transactions::signing};
 
+use super::signing::push_taproot_leaf_script_and_control_block_to_witness;
 use super::{
     super::{
         connectors::{
             connector::*, connector_1::Connector1, connector_a::ConnectorA, connector_b::ConnectorB, connector_k::ConnectorK
         },
         contexts::operator::OperatorContext,
-        graphs::base::{DUST_AMOUNT, FEE_AMOUNT},
+        graphs::base::{DUST_AMOUNT, FEE_AMOUNT, CALC_ROUND},
         scripts::*,
     },
     base::*,
@@ -41,7 +42,7 @@ impl PreSignedTransaction for KickOffTransaction {
 }
 
 impl KickOffTransaction {
-    pub fn new(context: &OperatorContext, input0: Input, compressed_statement: &[u8]) -> Self {
+    pub fn new(context: &OperatorContext, input0: Input, statement: &[u8]) -> Self {
         let connector_1 = Connector1::new(context.network, &context.operator_public_key);
         let connector_a = ConnectorA::new(
             context.network,
@@ -49,11 +50,16 @@ impl KickOffTransaction {
             &context.n_of_n_taproot_public_key,
         );
         let connector_b = ConnectorB::new(context.network, &context.n_of_n_taproot_public_key);
-        let connector_k = ConnectorK::new(context.network, &context.operator_public_key, &context.operator_commitment_pubkey);
+        let connector_k = ConnectorK::new(
+            context.network, 
+            &context.operator_public_key, 
+            &context.operator_commitment_pubkey,
+            &context.operator_taproot_public_key,
+        );
 
-        let _input0 = connector_k.generate_tx_in(&input0);
+        let _input0 = connector_k.generate_taproot_leaf_tx_in(0, &input0);
 
-        let available_input_amount = input0.amount - Amount::from_sat(FEE_AMOUNT);
+        let available_input_amount = input0.amount - Amount::from_sat(HIGH_FEE_AMOUNT);
 
         let _output0 = TxOut {
             value: Amount::from_sat(DUST_AMOUNT),
@@ -70,14 +76,6 @@ impl KickOffTransaction {
             script_pubkey: connector_b.generate_taproot_address().script_pubkey(),
         };
 
-        let statement = &compressed_statement[1..];
-        let round = compressed_statement[0];
-        let sig_script = hash_chain::sign_result(&context.operator_commitment_seckey, statement, round as u32);
-        let stack_script = hash_chain::push_stack_script(statement, round as u32);
-        let commit_y_script = script! {
-            { hash_chain::commitment_script_unlock(sig_script, stack_script, 0) }
-        };
-
         let mut this = KickOffTransaction {
             tx: Transaction {
                 version: bitcoin::transaction::Version(2),
@@ -87,28 +85,32 @@ impl KickOffTransaction {
             },
             prev_outs: vec![TxOut {
                 value: input0.amount,
-                script_pubkey: generate_pay_to_pubkey_script_address(
-                    context.network,
-                    &context.operator_public_key,
-                )
-                .script_pubkey(), 
+                script_pubkey: connector_k.generate_taproot_address().script_pubkey(), 
             }],
-            prev_scripts: vec![commit_y_script.compile()],
+            prev_scripts: vec![connector_k.generate_taproot_leaf_script(0)],
         };
+        
+        // push witness for connector_k
+        connector_k.push_leaf0_unlock_witness(&mut this.tx.input[0].witness, &context.operator_commitment_seckey, statement);
+        let redeem_script = connector_k.generate_taproot_leaf_script(0);
+        let taproot_spend_info = connector_k.generate_taproot_spend_info();
+        push_taproot_leaf_script_and_control_block_to_witness(&mut this.tx, 0, &taproot_spend_info, &redeem_script);
 
-        this.sign_input0(context);
+        // // debug
+        // let witness = this.tx.input[0].witness.clone();
+        // for i in 0..witness.len()/4 {
+        //     let ele_0 = witness.nth(4*i).unwrap();
+        //     let ele_1 = witness.nth(4*i+1).unwrap();
+        //     let ele_2 = witness.nth(4*i+2).unwrap();
+        //     let ele_3 = witness.nth(4*i+3).unwrap();
+        //     let res_0 = hex::encode(&ele_0);
+        //     let res_1 = hex::encode(&ele_1);
+        //     let res_2 = hex::encode(&ele_2);
+        //     let res_3 = hex::encode(&ele_3);
+        //     println!("{res_0} {res_1} {res_2} {res_3}");
+        // }
 
         this
-    }
-
-    fn sign_input0(&mut self, context: &OperatorContext) {
-        pre_sign_p2wsh_input(
-            self,
-            context,
-            0,
-            EcdsaSighashType::All,
-            &vec![&context.operator_keypair],
-        );
     }
 }
 

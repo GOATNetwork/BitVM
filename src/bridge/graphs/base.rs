@@ -5,6 +5,7 @@ pub const GRAPH_VERSION: &str = "0.1";
 
 pub const INITIAL_AMOUNT: u64 = 100_000;
 pub const FEE_AMOUNT: u64 = 1_000;
+pub const HIGH_FEE_AMOUNT: u64 = 100_000;
 pub const DUST_AMOUNT: u64 = 10_000;
 pub const ONE_HUNDRED: u64 = 100_000_000;
 
@@ -20,7 +21,8 @@ pub const WITHDRAWER_SECRET: &str =
 
 pub const EVM_ADDRESS: &str = "0x0000000000000000000000000000000000000000";
 
-pub const OPERATOR_STATEMENT: [u8; 21] = [0xa; 21];
+pub const OPERATOR_STATEMENT: [u8; 20] = [0xf; 20];
+pub const CALC_ROUND: u32 = 0x3;
 
 pub trait BaseGraph {
     fn network(&self) -> Network;

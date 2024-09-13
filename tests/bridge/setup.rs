@@ -30,7 +30,7 @@ pub async fn setup_test() -> (
     Connector2,
     Connector3,
     String,
-    [u8; 21]
+    [u8; 20]
 ) {
     let network = Network::Testnet;
 
@@ -76,7 +76,7 @@ pub async fn setup_test() -> (
         &depositor_context.depositor_taproot_public_key,
         &verifier_context.n_of_n_taproot_public_key,
     );
-    let connector_k = ConnectorK::new(network, &operator_context.operator_public_key, &operator_context.operator_commitment_pubkey);
+    let connector_k = ConnectorK::new(network, &operator_context.operator_public_key, &operator_context.operator_commitment_pubkey, &operator_context.operator_taproot_public_key);
     let connector_0 = Connector0::new(network, &verifier_context.n_of_n_public_key);
     let connector_1 = Connector1::new(network, &operator_context.operator_public_key);
     let connector_2 = Connector2::new(network, &operator_context.operator_public_key);
