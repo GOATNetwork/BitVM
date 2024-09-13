@@ -157,7 +157,11 @@ pub fn push_commitment_unlock_witness(witness: &mut Witness, sec_key: &[u8; 20],
     let hash_n: [u8; 20] = blake3_160_n(statement, index);
     for byte in hash_n.iter().rev() {
         if *byte != 0u8 {
-            witness.push([*byte].to_vec());
+            if *byte > 0x7f {
+                witness.push([*byte,0x00].to_vec());
+            } else {
+                witness.push([*byte].to_vec());
+            }
         } else {
             witness.push([]);
         }
@@ -166,7 +170,11 @@ pub fn push_commitment_unlock_witness(witness: &mut Witness, sec_key: &[u8; 20],
     // push index
     for byte in encode_index(index).iter().rev() {
         if *byte != 0u8 {
-            witness.push([*byte].to_vec());
+            if *byte > 0x7f {
+                witness.push([*byte,0x00].to_vec());
+            } else {
+                witness.push([*byte].to_vec());
+            }
         } else {
             witness.push([]);
         }
@@ -217,7 +225,7 @@ mod test {
             
             { commitment_script_lock(&pubkey, index)}
 
-            OP_TRUE
+            // OP_TRUE
         };
         dbg!(full_script.len());
 
@@ -264,6 +272,10 @@ mod test {
 
         let input_sig = sign_temp(&sec_key, &statement, index);
         let output_sig = sign_temp(&sec_key, &statement, index+1);
+
+        // dbg!(execute_script(script! {
+        //     OP_TRUE
+        // }));
 
         let mut witness = Witness::new();
 

@@ -51,12 +51,12 @@ async fn test_kick_off_tx() {
         amount: pre_kickoff_tx.output[0].value,
     };
     let kick_off = KickOffTransaction::new(&operator_context, kick_off_input, &statement);
-    // let kick_off_tx = kick_off.finalize();
-    // println!("\n\n-----------Kickoff-----------:");
-    // // println!("Script Path Spend Transaction: {:?}\n", kick_off_tx);
-    // let result = client.esplora.broadcast(&kick_off_tx).await;
-    // println!("Txid: {:?}", kick_off_tx.compute_txid());
-    // println!("Broadcast result: {:?}\n", result);
-    // // println!("Transaction hex: \n{}", serialize_hex(&kick_off_tx));
-    // assert!(result.is_ok());
+    let kick_off_tx = kick_off.finalize();
+    println!("\n\n-----------Kickoff-----------:");
+    // println!("Script Path Spend Transaction: {:?}\n", kick_off_tx);
+    let result = client.esplora.broadcast(&kick_off_tx).await;
+    println!("Txid: {:?}", kick_off_tx.compute_txid());
+    println!("Broadcast result: {:?}\n", result);
+    // println!("Transaction hex: \n{}", serialize_hex(&kick_off_tx));
+    assert!(result.is_ok());
 }
