@@ -105,42 +105,6 @@ impl fmt::Display for ExecuteInfo {
     }
 }
 
-pub fn execute_witness_script(script: treepp::Script, witness: Witness) -> ExecuteInfo {
-    let mut exec = Exec::new(
-        ExecCtx::Tapscript,
-        Options::default(),
-        TxTemplate {
-            tx: Transaction {
-                version: bitcoin::transaction::Version::TWO,
-                lock_time: bitcoin::locktime::absolute::LockTime::ZERO,
-                input: vec![],
-                output: vec![],
-            },
-            prevouts: vec![],
-            input_idx: 0,
-            taproot_annex_scriptleaf: Some((TapLeafHash::all_zeros(), None)),
-        },
-        script.compile(),
-        vec![],
-    )
-    .expect("error creating exec");
-
-    loop {
-        if exec.exec_next().is_err() {
-            break;
-        }
-    }
-    let res = exec.result().unwrap();
-    ExecuteInfo {
-        success: res.success,
-        error: res.error.clone(),
-        last_opcode: res.opcode,
-        final_stack: FmtStack(exec.stack().clone()),
-        remaining_script: exec.remaining_script().to_asm_string(),
-        stats: exec.stats().clone(),
-    }
-}
-
 pub fn execute_script(script: treepp::Script) -> ExecuteInfo {
     let mut exec = Exec::new(
         ExecCtx::Tapscript,

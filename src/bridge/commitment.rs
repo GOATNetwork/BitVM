@@ -70,20 +70,20 @@ pub fn push_sig_witness(witness: &mut Witness, sec_key: &[u8; 20], message: &[u8
 // first n input will be kept in the final stack
 pub fn check_sig_dup(public_key: &PublicKey, input_len: usize, num: usize) -> Script {
 
-    // winternitz_hash::check_hash_sig_dup(public_key, input_len, num)
-    winternitz_hash::check_raw_sig_dup(public_key, input_len, num)
+    winternitz_hash::check_hash_sig_dup(public_key, input_len, num)
+    // winternitz_hash::check_raw_sig_dup(public_key, input_len, num)
 }
 
 pub fn sign_msg(sec_key: &[u8; 20], message: &[u8]) -> Script {
     let sec_key = hex::encode(sec_key.clone());
     
-    // winternitz_hash::sign_hash(&sec_key, message)
-    winternitz_hash::sign_raw(&sec_key, message)
+    winternitz_hash::sign_hash(&sec_key, message)
+    // winternitz_hash::sign_raw(&sec_key, message)
 }
 
 pub fn push_sig_witness(witness: &mut Witness, sec_key: &[u8; 20], message: &[u8]) {
     let secret_key = hex::encode(sec_key.clone());
 
-    // winternitz_hash::push_hash_sig_witness(witness, sec_key, message);
-    winternitz_hash::push_raw_sig_witness(witness, sec_key, message);
+    winternitz_hash::push_hash_sig_witness(witness, sec_key, message);
+    // winternitz_hash::push_raw_sig_witness(witness, sec_key, message);
 }
