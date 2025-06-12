@@ -10,7 +10,8 @@ use super::{
     super::{
         super::{
             connectors::{
-                base::*, connector_4::Connector4, connector_5::Connector5, connector_c::ConnectorC, connector_d::ConnectorD,
+                base::*, connector_4::Connector4, connector_5::Connector5, connector_c::ConnectorC,
+                connector_d::ConnectorD,
             },
             contexts::{base::BaseContext, operator::OperatorContext, verifier::VerifierContext},
             transactions::base::DUST_AMOUNT,
@@ -37,17 +38,27 @@ pub struct AssertFinalTransaction {
 }
 
 impl PreSignedTransaction for AssertFinalTransaction {
-    fn tx(&self) -> &Transaction { &self.tx }
+    fn tx(&self) -> &Transaction {
+        &self.tx
+    }
 
-    fn tx_mut(&mut self) -> &mut Transaction { &mut self.tx }
+    fn tx_mut(&mut self) -> &mut Transaction {
+        &mut self.tx
+    }
 
-    fn prev_outs(&self) -> &Vec<TxOut> { &self.prev_outs }
+    fn prev_outs(&self) -> &Vec<TxOut> {
+        &self.prev_outs
+    }
 
-    fn prev_scripts(&self) -> &Vec<ScriptBuf> { &self.prev_scripts }
+    fn prev_scripts(&self) -> &Vec<ScriptBuf> {
+        &self.prev_scripts
+    }
 }
 
 impl PreSignedMusig2Transaction for AssertFinalTransaction {
-    fn musig2_nonces(&self) -> &HashMap<usize, HashMap<PublicKey, PubNonce>> { &self.musig2_nonces }
+    fn musig2_nonces(&self) -> &HashMap<usize, HashMap<PublicKey, PubNonce>> {
+        &self.musig2_nonces
+    }
     fn musig2_nonces_mut(&mut self) -> &mut HashMap<usize, HashMap<PublicKey, PubNonce>> {
         &mut self.musig2_nonces
     }
@@ -67,7 +78,9 @@ impl PreSignedMusig2Transaction for AssertFinalTransaction {
     ) -> &mut HashMap<usize, HashMap<PublicKey, PartialSignature>> {
         &mut self.musig2_signatures
     }
-    fn verifier_inputs(&self) -> Vec<usize> { vec![0] }
+    fn verifier_inputs(&self) -> Vec<usize> {
+        vec![0]
+    }
 }
 
 impl AssertFinalTransaction {
@@ -114,30 +127,24 @@ impl AssertFinalTransaction {
 
         // input_0 : connector_d
         let input_0_leaf = 0;
-        txins.push(
-            connector_d.generate_taproot_leaf_tx_in(input_0_leaf, &input_0)
-        );
+        txins.push(connector_d.generate_taproot_leaf_tx_in(input_0_leaf, &input_0));
         prev_outs.push(TxOut {
             value: input_0.amount,
             script_pubkey: connector_d.generate_taproot_address().script_pubkey(),
         });
-        prev_scripts.push(
-            connector_d.generate_taproot_leaf_script(input_0_leaf)
-        );
+        prev_scripts.push(connector_d.generate_taproot_leaf_script(input_0_leaf));
         total_input_amount += input_0.amount;
 
         // other inputs: connectors_f
         for i in 0..COMMIT_TX_NUM {
-            txins.push(
-                assert_commit_connectors_f.connectors_f[i].generate_tx_in(&input_f[i])
-            );
+            txins.push(assert_commit_connectors_f.connectors_f[i].generate_tx_in(&input_f[i]));
             prev_outs.push(TxOut {
                 value: input_f[i].amount,
-                script_pubkey: assert_commit_connectors_f.connectors_f[i].generate_address().script_pubkey(),
+                script_pubkey: assert_commit_connectors_f.connectors_f[i]
+                    .generate_address()
+                    .script_pubkey(),
             });
-            prev_scripts.push(
-                assert_commit_connectors_f.connectors_f[i].generate_script(),
-            );
+            prev_scripts.push(assert_commit_connectors_f.connectors_f[i].generate_script());
             total_input_amount += input_f[i].amount;
         }
         let total_output_amount = total_input_amount - Amount::from_sat(MIN_RELAY_FEE_ASSERT_FINAL);
@@ -197,7 +204,7 @@ impl AssertFinalTransaction {
     }
 
     pub fn sign_commit_inputs(&mut self, context: &OperatorContext) {
-        for input_index in 1..(COMMIT_TX_NUM+1) {
+        for input_index in 1..(COMMIT_TX_NUM + 1) {
             pre_sign_p2wsh_input(
                 self,
                 input_index,
@@ -258,6 +265,10 @@ impl AssertFinalTransaction {
 }
 
 impl BaseTransaction for AssertFinalTransaction {
-    fn finalize(&self) -> Transaction { self.tx.clone() }
-    fn name(&self) -> &'static str { "AssertFinal" }
+    fn finalize(&self) -> Transaction {
+        self.tx.clone()
+    }
+    fn name(&self) -> &'static str {
+        "AssertFinal"
+    }
 }

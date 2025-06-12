@@ -4,10 +4,12 @@ use serde::{Deserialize, Serialize};
 use strum::{Display, EnumIter, IntoEnumIterator};
 
 use bitvm::{
-    chunk::api::{
-        PublicKeys as ApiPublicKeys, NUM_HASH, NUM_PUBS, NUM_U256
-    }, 
-    signatures::{signing_winternitz::{WinternitzPublicKey, WinternitzSecret, LOG_D}, winternitz::Parameters, wots_api::HASH_LEN}
+    chunk::api::{PublicKeys as ApiPublicKeys, NUM_HASH, NUM_PUBS, NUM_U256},
+    signatures::{
+        signing_winternitz::{WinternitzPublicKey, WinternitzSecret, LOG_D},
+        winternitz::Parameters,
+        wots_api::HASH_LEN,
+    },
 };
 
 use super::constants::EVM_TXID_LENGTH;
@@ -70,16 +72,15 @@ impl TryFrom<String> for CommitmentMessageId {
 }
 
 impl CommitmentMessageId {
-    pub fn pubkey_map_for_kickoff(raw_pubkeys: &[WinternitzPublicKey; NUM_KICKOFF]) -> HashMap<CommitmentMessageId, WinternitzPublicKey> {
-        HashMap::from([
-            (
-                CommitmentMessageId::EvmWithdrawTxid,
-                raw_pubkeys[0].clone(),
-            ),
-        ])
+    pub fn pubkey_map_for_kickoff(
+        raw_pubkeys: &[WinternitzPublicKey; NUM_KICKOFF],
+    ) -> HashMap<CommitmentMessageId, WinternitzPublicKey> {
+        HashMap::from([(CommitmentMessageId::EvmWithdrawTxid, raw_pubkeys[0].clone())])
     }
 
-    pub fn pubkey_map_for_assert(raw_pubkeys: &ApiPublicKeys) -> HashMap<CommitmentMessageId, WinternitzPublicKey> {
+    pub fn pubkey_map_for_assert(
+        raw_pubkeys: &ApiPublicKeys,
+    ) -> HashMap<CommitmentMessageId, WinternitzPublicKey> {
         let mut commitment_map = HashMap::new();
         for i in 0..NUM_PUBS {
             commitment_map.insert(
@@ -87,7 +88,7 @@ impl CommitmentMessageId {
                 WinternitzPublicKey {
                     public_key: raw_pubkeys.0[i].to_vec(),
                     parameters: Parameters::new_by_bit_length(8 * 32, LOG_D),
-                }
+                },
             );
         }
         for i in 0..NUM_U256 {
@@ -96,32 +97,32 @@ impl CommitmentMessageId {
                 WinternitzPublicKey {
                     public_key: raw_pubkeys.1[i].to_vec(),
                     parameters: Parameters::new_by_bit_length(8 * 32, LOG_D),
-                }
+                },
             );
         }
         for i in 0..NUM_HASH {
             commitment_map.insert(
-                CommitmentMessageId::Groth16IntermediateValues((format!("{}", i + NUM_PUBS + NUM_U256), HASH_LEN as usize)),
+                CommitmentMessageId::Groth16IntermediateValues((
+                    format!("{}", i + NUM_PUBS + NUM_U256),
+                    HASH_LEN as usize,
+                )),
                 WinternitzPublicKey {
                     public_key: raw_pubkeys.2[i].to_vec(),
                     parameters: Parameters::new_by_bit_length(8 * HASH_LEN, LOG_D),
-                }
+                },
             );
         }
 
         commitment_map
     }
 
-
     // btree map is a copy of chunker related commitments
     pub fn generate_commitment_secrets() -> HashMap<CommitmentMessageId, WinternitzSecret> {
         println!("Generating commitment secrets ...");
-        let mut commitment_map = HashMap::from([
-            (
-                CommitmentMessageId::EvmWithdrawTxid,
-                WinternitzSecret::new(EVM_TXID_LENGTH),
-            ),
-        ]);
+        let mut commitment_map = HashMap::from([(
+            CommitmentMessageId::EvmWithdrawTxid,
+            WinternitzSecret::new(EVM_TXID_LENGTH),
+        )]);
 
         for i in 0..NUM_PUBS {
             commitment_map.insert(
@@ -137,7 +138,10 @@ impl CommitmentMessageId {
         }
         for i in 0..NUM_HASH {
             commitment_map.insert(
-                CommitmentMessageId::Groth16IntermediateValues((format!("{}", i + NUM_PUBS + NUM_U256), HASH_LEN as usize)),
+                CommitmentMessageId::Groth16IntermediateValues((
+                    format!("{}", i + NUM_PUBS + NUM_U256),
+                    HASH_LEN as usize,
+                )),
                 WinternitzSecret::new(HASH_LEN as usize),
             );
         }
@@ -145,4 +149,3 @@ impl CommitmentMessageId {
         commitment_map
     }
 }
-

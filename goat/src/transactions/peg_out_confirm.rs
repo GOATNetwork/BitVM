@@ -1,6 +1,6 @@
 use bitcoin::{
-    absolute, consensus, Amount, EcdsaSighashType, Network, PublicKey, ScriptBuf, Transaction,
-    TxOut, Witness, Address, TxIn
+    absolute, consensus, Address, Amount, EcdsaSighashType, Network, PublicKey, ScriptBuf,
+    Transaction, TxIn, TxOut, Witness,
 };
 use serde::{Deserialize, Serialize};
 
@@ -29,18 +29,20 @@ impl PreKickoffTransaction {
         inputs: Vec<Input>,
         stake_amount: Amount,
         fee_amount: Amount,
-        change_address: Address, 
+        change_address: Address,
     ) -> Self {
         let mut total_input_amount = Amount::ZERO;
         let input_amounts: Vec<Amount> = inputs.iter().map(|input| input.amount).collect();
-        let txins: Vec<TxIn> = inputs.iter()
+        let txins: Vec<TxIn> = inputs
+            .iter()
             .map(|input| {
                 total_input_amount += input.amount;
                 generate_default_tx_in(input)
-            }).collect();
+            })
+            .collect();
         let change_amount = total_input_amount - stake_amount - fee_amount;
         let mut txouts = vec![];
-        let output_0 =  TxOut {
+        let output_0 = TxOut {
             value: stake_amount,
             script_pubkey: connector_6.generate_taproot_address().script_pubkey(),
         };
@@ -72,14 +74,22 @@ impl PreKickoffTransaction {
         self.tx.input[input_index].witness = witness
     }
 
-    pub fn tx(&self) -> &Transaction { &self.tx }
+    pub fn tx(&self) -> &Transaction {
+        &self.tx
+    }
 
-    pub fn tx_mut(&mut self) -> &mut Transaction { &mut self.tx }
+    pub fn tx_mut(&mut self) -> &mut Transaction {
+        &mut self.tx
+    }
 }
 
 impl BaseTransaction for PreKickoffTransaction {
-    fn finalize(&self) -> Transaction { self.tx.clone() }
-    fn name(&self) -> &'static str { "PreKickoff" }
+    fn finalize(&self) -> Transaction {
+        self.tx.clone()
+    }
+    fn name(&self) -> &'static str {
+        "PreKickoff"
+    }
 }
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Clone)]
@@ -92,13 +102,21 @@ pub struct PegOutConfirmTransaction {
 }
 
 impl PreSignedTransaction for PegOutConfirmTransaction {
-    fn tx(&self) -> &Transaction { &self.tx }
+    fn tx(&self) -> &Transaction {
+        &self.tx
+    }
 
-    fn tx_mut(&mut self) -> &mut Transaction { &mut self.tx }
+    fn tx_mut(&mut self) -> &mut Transaction {
+        &mut self.tx
+    }
 
-    fn prev_outs(&self) -> &Vec<TxOut> { &self.prev_outs }
+    fn prev_outs(&self) -> &Vec<TxOut> {
+        &self.prev_outs
+    }
 
-    fn prev_scripts(&self) -> &Vec<ScriptBuf> { &self.prev_scripts }
+    fn prev_scripts(&self) -> &Vec<ScriptBuf> {
+        &self.prev_scripts
+    }
 }
 
 impl PegOutConfirmTransaction {
@@ -158,6 +176,10 @@ impl PegOutConfirmTransaction {
 }
 
 impl BaseTransaction for PegOutConfirmTransaction {
-    fn finalize(&self) -> Transaction { self.tx.clone() }
-    fn name(&self) -> &'static str { "PegOutConfirm" }
+    fn finalize(&self) -> Transaction {
+        self.tx.clone()
+    }
+    fn name(&self) -> &'static str {
+        "PegOutConfirm"
+    }
 }

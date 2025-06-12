@@ -5,6 +5,9 @@ use alloy::rpc::types::Log;
 use super::{
     chain::PegInEvent, chain::PegOutBurntEvent, chain::PegOutEvent, chain_adaptor::ChainAdaptor,
 };
+use alloy::network::Ethereum;
+use alloy::providers::fillers::{FillProvider, JoinFill, RecommendedFillers};
+use alloy::providers::Identity;
 use alloy::sol_types::SolEvent;
 use alloy::{
     eips::BlockNumberOrTag,
@@ -12,7 +15,7 @@ use alloy::{
     providers::{Provider, ProviderBuilder, RootProvider},
     rpc::types::Filter,
     sol,
-    transports::http::{reqwest::Url, Client, Http},
+    transports::http::reqwest::Url,
 };
 use async_trait::async_trait;
 use bitcoin::hashes::Hash;
@@ -52,7 +55,10 @@ sol!(
 pub struct EthereumAdaptor {
     bridge_address: EvmAddress,
     bridge_creation_block: u64,
-    provider: RootProvider<Http<Client>>,
+    provider: FillProvider<
+        JoinFill<Identity, <Ethereum as RecommendedFillers>::RecommendedFillers>,
+        RootProvider,
+    >,
     to_block: Option<BlockNumberOrTag>,
 }
 
@@ -236,7 +242,7 @@ impl EthereumAdaptor {
         Self {
             bridge_address: config.bridge_address,
             bridge_creation_block: config.bridge_creation_block,
-            provider: ProviderBuilder::new().on_http(config.rpc_url),
+            provider: ProviderBuilder::new().connect_http(config.rpc_url),
             to_block: config.to_block,
         }
     }

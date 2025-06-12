@@ -34,17 +34,27 @@ pub struct PegInConfirmTransaction {
 }
 
 impl PreSignedTransaction for PegInConfirmTransaction {
-    fn tx(&self) -> &Transaction { &self.tx }
+    fn tx(&self) -> &Transaction {
+        &self.tx
+    }
 
-    fn tx_mut(&mut self) -> &mut Transaction { &mut self.tx }
+    fn tx_mut(&mut self) -> &mut Transaction {
+        &mut self.tx
+    }
 
-    fn prev_outs(&self) -> &Vec<TxOut> { &self.prev_outs }
+    fn prev_outs(&self) -> &Vec<TxOut> {
+        &self.prev_outs
+    }
 
-    fn prev_scripts(&self) -> &Vec<ScriptBuf> { &self.prev_scripts }
+    fn prev_scripts(&self) -> &Vec<ScriptBuf> {
+        &self.prev_scripts
+    }
 }
 
 impl PreSignedMusig2Transaction for PegInConfirmTransaction {
-    fn musig2_nonces(&self) -> &HashMap<usize, HashMap<PublicKey, PubNonce>> { &self.musig2_nonces }
+    fn musig2_nonces(&self) -> &HashMap<usize, HashMap<PublicKey, PubNonce>> {
+        &self.musig2_nonces
+    }
     fn musig2_nonces_mut(&mut self) -> &mut HashMap<usize, HashMap<PublicKey, PubNonce>> {
         &mut self.musig2_nonces
     }
@@ -64,7 +74,9 @@ impl PreSignedMusig2Transaction for PegInConfirmTransaction {
     ) -> &mut HashMap<usize, HashMap<PublicKey, PartialSignature>> {
         &mut self.musig2_signatures
     }
-    fn verifier_inputs(&self) -> Vec<usize> { vec![0] }
+    fn verifier_inputs(&self) -> Vec<usize> {
+        vec![0]
+    }
 }
 
 impl PegInConfirmTransaction {
@@ -207,10 +219,10 @@ impl PegInConfirmTransaction {
     }
 
     pub fn try_finalize_input_0(
-        &mut self, 
-        context: &dyn BaseContext, 
-        connector_z: &ConnectorZ, 
-        depositor_signature: bitcoin::taproot::Signature
+        &mut self,
+        context: &dyn BaseContext,
+        connector_z: &ConnectorZ,
+        depositor_signature: bitcoin::taproot::Signature,
     ) {
         let input_index = 0;
         assert!(self.has_all_signatures(), "pre-sign not finished");
@@ -254,6 +266,10 @@ impl PegInConfirmTransaction {
 }
 
 impl BaseTransaction for PegInConfirmTransaction {
-    fn finalize(&self) -> Transaction { self.tx.clone() }
-    fn name(&self) -> &'static str { PEG_IN_CONFIRM_TX_NAME }
+    fn finalize(&self) -> Transaction {
+        self.tx.clone()
+    }
+    fn name(&self) -> &'static str {
+        PEG_IN_CONFIRM_TX_NAME
+    }
 }

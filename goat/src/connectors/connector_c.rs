@@ -31,12 +31,13 @@ use serde::{
 
 use bitvm::{
     chunk::api::{
-        api_generate_full_tapscripts, api_generate_partial_script, 
+        api_generate_full_tapscripts, api_generate_partial_script,
         type_conversion_utils::{
-            script_to_witness, utils_signatures_from_raw_witnesses, utils_typed_pubkey_from_raw, RawProof, RawWitness
-        }, 
+            script_to_witness, utils_signatures_from_raw_witnesses, utils_typed_pubkey_from_raw,
+            RawProof, RawWitness,
+        },
         validate_assertions, PublicKeys,
-    }, 
+    },
     signatures::signing_winternitz::WinternitzPublicKey,
 };
 
@@ -56,8 +57,7 @@ const MAX_CACHE_FILES: u32 = 90; //~1GB in total, based on lock scripts cache be
 
 fn get_lock_scripts_cache_path(cache_id: &str) -> PathBuf {
     let lock_scripts_file_name = format!("{LOCK_SCRIPTS_FILE_PREFIX}{}.bin", cache_id);
-    Path::new(CACHE_DIRECTORY_NAME)
-        .join(lock_scripts_file_name)
+    Path::new(CACHE_DIRECTORY_NAME).join(lock_scripts_file_name)
 }
 
 #[derive(Eq, PartialEq, Clone)]
@@ -213,7 +213,6 @@ impl ConnectorC {
         commit_2_witness: Vec<RawWitness>,
         vk: &ZkProofVerifyingKey,
     ) -> Result<(usize, RawWitness), Error> {
-
         let mut sorted_pks: Vec<(u32, WinternitzPublicKey)> = vec![];
         self.commitment_public_keys
             .clone()
@@ -225,20 +224,30 @@ impl ConnectorC {
                 }
             });
         sorted_pks.sort_by(|a, b| a.0.cmp(&b.0));
-        let sorted_pks = sorted_pks.iter().map(|f| &f.1).collect::<Vec<&WinternitzPublicKey>>();
+        let sorted_pks = sorted_pks
+            .iter()
+            .map(|f| &f.1)
+            .collect::<Vec<&WinternitzPublicKey>>();
 
-        
         let mut commit_witness = commit_1_witness.clone();
         commit_witness.extend_from_slice(&commit_2_witness);
-        
+
         let sigs = utils_signatures_from_raw_witnesses(&commit_witness);
         let pubs = utils_typed_pubkey_from_raw(sorted_pks);
-        let locs: Vec<bitcoin_script::builder::StructuredScript> = self.lock_scripts_bytes.clone().into_iter().map(|f| bitcoin_script::builder::StructuredScript::new("").push_script(ScriptBuf::from_bytes(f))).collect();
+        let locs: Vec<bitcoin_script::builder::StructuredScript> = self
+            .lock_scripts_bytes
+            .clone()
+            .into_iter()
+            .map(|f| {
+                bitcoin_script::builder::StructuredScript::new("")
+                    .push_script(ScriptBuf::from_bytes(f))
+            })
+            .collect();
         let locs = locs.try_into().unwrap();
         let exec_res = validate_assertions(vk, sigs, pubs, &locs);
         if exec_res.is_some() {
             let exec_res = exec_res.unwrap();
-            let wit: RawWitness =  script_to_witness(exec_res.1);
+            let wit: RawWitness = script_to_witness(exec_res.1);
             return Ok((exec_res.0, wit));
         }
         return Err(Error::Chunker(ChunkerError::ValidProof));
@@ -354,24 +363,27 @@ pub fn generate_assert_leaves(
     println!("Generating new lock scripts...");
     // hash map to btree map
     let mut sorted_pks: Vec<(u32, WinternitzPublicKey)> = vec![];
-    commits_public_keys
-        .clone()
-        .into_iter()
-        .for_each(|(k, v)| {
-            if let CommitmentMessageId::Groth16IntermediateValues((name, _)) = k {
-                let index = u32::from_str_radix(&name, 10).unwrap();
-                sorted_pks.push((index, v));
-            }
-        });
-    
+    commits_public_keys.clone().into_iter().for_each(|(k, v)| {
+        if let CommitmentMessageId::Groth16IntermediateValues((name, _)) = k {
+            let index = u32::from_str_radix(&name, 10).unwrap();
+            sorted_pks.push((index, v));
+        }
+    });
+
     sorted_pks.sort_by(|a, b| a.0.cmp(&b.0));
-    let sorted_pks = sorted_pks.iter().map(|f| &f.1).collect::<Vec<&WinternitzPublicKey>>();
+    let sorted_pks = sorted_pks
+        .iter()
+        .map(|f| &f.1)
+        .collect::<Vec<&WinternitzPublicKey>>();
 
     let default_proof = RawProof::default(); // mock a default proof to generate scripts
     let partial_scripts = api_generate_partial_script(&default_proof.vk);
     let pks: PublicKeys = utils_typed_pubkey_from_raw(sorted_pks);
-    let locks= api_generate_full_tapscripts(pks, &partial_scripts);
-    let locks = locks.into_iter().map(|f| f.compile().into_bytes()).collect();
+    let locks = api_generate_full_tapscripts(pks, &partial_scripts);
+    let locks = locks
+        .into_iter()
+        .map(|f| f.compile().into_bytes())
+        .collect();
     locks
 }
 

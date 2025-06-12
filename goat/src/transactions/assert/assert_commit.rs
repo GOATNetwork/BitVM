@@ -2,7 +2,9 @@ use bitcoin::{absolute, consensus, Amount, ScriptBuf, Transaction, TxOut};
 use bitvm::{chunk::api::type_conversion_utils::RawWitness, execute_raw_script_with_inputs};
 use serde::{Deserialize, Serialize};
 
-use crate::transactions::{assert::utils::MAX_CONNECTORS_E_PER_TX, signing::populate_taproot_input_witness};
+use crate::transactions::{
+    assert::utils::MAX_CONNECTORS_E_PER_TX, signing::populate_taproot_input_witness,
+};
 
 use super::{
     super::{
@@ -11,13 +13,13 @@ use super::{
         pre_signed::*,
     },
     utils::{
-        AllCommitConnectorsE, SingleCommitConnectorsE, AssertCommitConnectorsF, COMMIT_TX_NUM,
+        AllCommitConnectorsE, AssertCommitConnectorsF, SingleCommitConnectorsE, COMMIT_TX_NUM,
     },
 };
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct AssertCommitTransactionSet {
-    pub commit_txns: [AssertCommitTransaction; COMMIT_TX_NUM]
+    pub commit_txns: [AssertCommitTransaction; COMMIT_TX_NUM],
 }
 impl AssertCommitTransactionSet {
     pub fn new(
@@ -40,13 +42,15 @@ impl AssertCommitTransactionSet {
             ));
         }
         AssertCommitTransactionSet {
-            commit_txns: commit_txns.try_into().unwrap_or_else(|_e| panic!("impossible")),
+            commit_txns: commit_txns
+                .try_into()
+                .unwrap_or_else(|_e| panic!("impossible")),
         }
     }
 
     pub fn sign(
-        &mut self, 
-        all_connectors_e: &AllCommitConnectorsE, 
+        &mut self,
+        all_connectors_e: &AllCommitConnectorsE,
         all_witnesses: Vec<RawWitness>,
     ) {
         for (i, witness) in (0..COMMIT_TX_NUM).zip(all_witnesses.chunks(MAX_CONNECTORS_E_PER_TX)) {
@@ -68,13 +72,21 @@ pub struct AssertCommitTransaction {
 }
 
 impl PreSignedTransaction for AssertCommitTransaction {
-    fn tx(&self) -> &Transaction { &self.tx }
+    fn tx(&self) -> &Transaction {
+        &self.tx
+    }
 
-    fn tx_mut(&mut self) -> &mut Transaction { &mut self.tx }
+    fn tx_mut(&mut self) -> &mut Transaction {
+        &mut self.tx
+    }
 
-    fn prev_outs(&self) -> &Vec<TxOut> { &self.prev_outs }
+    fn prev_outs(&self) -> &Vec<TxOut> {
+        &self.prev_outs
+    }
 
-    fn prev_scripts(&self) -> &Vec<ScriptBuf> { &self.prev_scripts }
+    fn prev_scripts(&self) -> &Vec<ScriptBuf> {
+        &self.prev_scripts
+    }
 }
 
 impl AssertCommitTransaction {
@@ -164,7 +176,10 @@ impl AssertCommitTransaction {
 }
 
 impl BaseTransaction for AssertCommitTransaction {
-    fn finalize(&self) -> Transaction { self.tx.clone() }
-    fn name(&self) -> &'static str { "AssertCommit" }
+    fn finalize(&self) -> Transaction {
+        self.tx.clone()
+    }
+    fn name(&self) -> &'static str {
+        "AssertCommit"
+    }
 }
-

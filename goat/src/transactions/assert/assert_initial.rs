@@ -1,21 +1,16 @@
-use bitcoin::{
-    absolute, consensus, Amount, ScriptBuf, TapSighashType, Transaction, TxOut,
-};
+use bitcoin::{absolute, consensus, Amount, ScriptBuf, TapSighashType, Transaction, TxOut};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-        connectors::{base::*, connector_b::ConnectorB, connector_d::ConnectorD},
-        contexts::operator::OperatorContext,
-        transactions::{
-            base::*,
-            pre_signed::*,
-            assert::utils::{
-                AllCommitConnectorsE, COMMIT_TX_NUM,
-            }, 
-            base::DUST_AMOUNT,
-        },
-    }
-;
+    connectors::{base::*, connector_b::ConnectorB, connector_d::ConnectorD},
+    contexts::operator::OperatorContext,
+    transactions::{
+        assert::utils::{AllCommitConnectorsE, COMMIT_TX_NUM},
+        base::DUST_AMOUNT,
+        base::*,
+        pre_signed::*,
+    },
+};
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct AssertInitialTransaction {
@@ -27,13 +22,21 @@ pub struct AssertInitialTransaction {
 }
 
 impl PreSignedTransaction for AssertInitialTransaction {
-    fn tx(&self) -> &Transaction { &self.tx }
+    fn tx(&self) -> &Transaction {
+        &self.tx
+    }
 
-    fn tx_mut(&mut self) -> &mut Transaction { &mut self.tx }
+    fn tx_mut(&mut self) -> &mut Transaction {
+        &mut self.tx
+    }
 
-    fn prev_outs(&self) -> &Vec<TxOut> { &self.prev_outs }
+    fn prev_outs(&self) -> &Vec<TxOut> {
+        &self.prev_outs
+    }
 
-    fn prev_scripts(&self) -> &Vec<ScriptBuf> { &self.prev_scripts }
+    fn prev_scripts(&self) -> &Vec<ScriptBuf> {
+        &self.prev_scripts
+    }
 }
 
 impl AssertInitialTransaction {
@@ -44,12 +47,8 @@ impl AssertInitialTransaction {
         all_commit_connectors_e: &AllCommitConnectorsE,
         input_0: Input,
     ) -> Self {
-        let mut this = Self::new_for_validation(
-            connector_b,
-            connector_d,
-            all_commit_connectors_e,
-            input_0,
-        );
+        let mut this =
+            Self::new_for_validation(connector_b, connector_d, all_commit_connectors_e, input_0);
 
         this.sign_input_0(&context, &connector_b);
 
@@ -92,7 +91,7 @@ impl AssertInitialTransaction {
                         .generate_taproot_address()
                         .script_pubkey(),
                 });
-            }            
+            }
         }
 
         AssertInitialTransaction {
@@ -123,6 +122,10 @@ impl AssertInitialTransaction {
 }
 
 impl BaseTransaction for AssertInitialTransaction {
-    fn finalize(&self) -> Transaction { self.tx.clone() }
-    fn name(&self) -> &'static str { "AssertInitial" }
+    fn finalize(&self) -> Transaction {
+        self.tx.clone()
+    }
+    fn name(&self) -> &'static str {
+        "AssertInitial"
+    }
 }

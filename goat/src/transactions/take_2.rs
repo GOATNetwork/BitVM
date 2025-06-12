@@ -1,6 +1,6 @@
 use bitcoin::{
-    absolute, consensus, Amount, EcdsaSighashType, Network, PublicKey, ScriptBuf, TapSighashType,
-    Transaction, TxOut, TapNodeHash,
+    absolute, consensus, Amount, EcdsaSighashType, Network, PublicKey, ScriptBuf, TapNodeHash,
+    TapSighashType, Transaction, TxOut,
 };
 use musig2::{secp256k1::schnorr::Signature, PartialSignature, PubNonce, SecNonce};
 use serde::{Deserialize, Serialize};
@@ -35,17 +35,27 @@ pub struct Take2Transaction {
 }
 
 impl PreSignedTransaction for Take2Transaction {
-    fn tx(&self) -> &Transaction { &self.tx }
+    fn tx(&self) -> &Transaction {
+        &self.tx
+    }
 
-    fn tx_mut(&mut self) -> &mut Transaction { &mut self.tx }
+    fn tx_mut(&mut self) -> &mut Transaction {
+        &mut self.tx
+    }
 
-    fn prev_outs(&self) -> &Vec<TxOut> { &self.prev_outs }
+    fn prev_outs(&self) -> &Vec<TxOut> {
+        &self.prev_outs
+    }
 
-    fn prev_scripts(&self) -> &Vec<ScriptBuf> { &self.prev_scripts }
+    fn prev_scripts(&self) -> &Vec<ScriptBuf> {
+        &self.prev_scripts
+    }
 }
 
 impl PreSignedMusig2Transaction for Take2Transaction {
-    fn musig2_nonces(&self) -> &HashMap<usize, HashMap<PublicKey, PubNonce>> { &self.musig2_nonces }
+    fn musig2_nonces(&self) -> &HashMap<usize, HashMap<PublicKey, PubNonce>> {
+        &self.musig2_nonces
+    }
     fn musig2_nonces_mut(&mut self) -> &mut HashMap<usize, HashMap<PublicKey, PubNonce>> {
         &mut self.musig2_nonces
     }
@@ -65,7 +75,9 @@ impl PreSignedMusig2Transaction for Take2Transaction {
     ) -> &mut HashMap<usize, HashMap<PublicKey, PartialSignature>> {
         &mut self.musig2_signatures
     }
-    fn verifier_inputs(&self) -> Vec<usize> { vec![0, 2] }
+    fn verifier_inputs(&self) -> Vec<usize> {
+        vec![0, 2]
+    }
 }
 
 impl Take2Transaction {
@@ -242,7 +254,11 @@ impl Take2Transaction {
         );
     }
 
-    pub fn sign_input_3_lit(&mut self, context: &OperatorContext, connector_c_taproot_merkle_root: TapNodeHash) {
+    pub fn sign_input_3_lit(
+        &mut self,
+        context: &OperatorContext,
+        connector_c_taproot_merkle_root: TapNodeHash,
+    ) {
         let input_index = 3;
         let prev_outs = &self.prev_outs().clone();
 
@@ -278,7 +294,8 @@ impl Take2Transaction {
         input_0_sig: bitcoin::taproot::Signature,
         input_2_sig: bitcoin::taproot::Signature,
     ) {
-        {   // input_0: connector_0
+        {
+            // input_0: connector_0
             let input_index = 0;
             let script = self.prev_scripts()[input_index].clone();
             let spend_info = connector_0.generate_taproot_spend_info();
@@ -297,7 +314,8 @@ impl Take2Transaction {
             );
         }
 
-        {   // input_2: connector_5
+        {
+            // input_2: connector_5
             let input_index = 2;
             let script = self.prev_scripts()[input_index].clone();
             let spend_info = connector_5.generate_taproot_spend_info();
@@ -342,6 +360,10 @@ impl Take2Transaction {
 }
 
 impl BaseTransaction for Take2Transaction {
-    fn finalize(&self) -> Transaction { self.tx.clone() }
-    fn name(&self) -> &'static str { "Take2" }
+    fn finalize(&self) -> Transaction {
+        self.tx.clone()
+    }
+    fn name(&self) -> &'static str {
+        "Take2"
+    }
 }

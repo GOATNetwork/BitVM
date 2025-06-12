@@ -1,6 +1,4 @@
-use bitcoin::{
-    absolute, consensus, Address, Amount, Transaction, TxIn, TxOut
-};
+use bitcoin::{absolute, consensus, Address, Amount, Transaction, TxIn, TxOut};
 use serde::{Deserialize, Serialize};
 
 use crate::scripts::generate_opreturn_script;
@@ -25,19 +23,21 @@ impl PegInTransaction {
         inputs: Vec<Input>,
         deposit_amount: Amount,
         fee_amount: Amount,
-        change_address: Address, 
+        change_address: Address,
         message: Vec<u8>,
     ) -> Self {
         let mut total_input_amount = Amount::ZERO;
         let input_amounts: Vec<Amount> = inputs.iter().map(|input| input.amount).collect();
-        let txins: Vec<TxIn> = inputs.iter()
+        let txins: Vec<TxIn> = inputs
+            .iter()
             .map(|input| {
                 total_input_amount += input.amount;
                 generate_default_tx_in(input)
-            }).collect();
+            })
+            .collect();
         let change_amount = total_input_amount - deposit_amount - fee_amount;
         let mut txouts = vec![];
-        let output_0 =  TxOut {
+        let output_0 = TxOut {
             value: deposit_amount,
             script_pubkey: connector_0.generate_taproot_address().script_pubkey(),
         };
@@ -58,7 +58,7 @@ impl PegInTransaction {
             fee_amount += change_amount;
         }
 
-        PegInTransaction { 
+        PegInTransaction {
             tx: Transaction {
                 version: bitcoin::transaction::Version(2),
                 lock_time: absolute::LockTime::ZERO,
@@ -69,13 +69,21 @@ impl PegInTransaction {
             input_amounts,
         }
     }
-    
-    pub fn tx(&self) -> &Transaction { &self.tx }
 
-    pub fn tx_mut(&mut self) -> &mut Transaction { &mut self.tx }
+    pub fn tx(&self) -> &Transaction {
+        &self.tx
+    }
+
+    pub fn tx_mut(&mut self) -> &mut Transaction {
+        &mut self.tx
+    }
 }
 
 impl BaseTransaction for PegInTransaction {
-    fn finalize(&self) -> Transaction { self.tx.clone() }
-    fn name(&self) -> &'static str { "PegIn" }
+    fn finalize(&self) -> Transaction {
+        self.tx.clone()
+    }
+    fn name(&self) -> &'static str {
+        "PegIn"
+    }
 }

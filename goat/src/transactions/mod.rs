@@ -1,13 +1,13 @@
 pub mod assert;
-pub mod peg_in;
 pub mod base;
 pub mod challenge;
 pub mod disprove;
 pub mod kick_off;
+pub mod peg_in;
 pub mod peg_out_confirm;
-pub mod pre_signed_musig2;
 pub mod pre_signed;
-pub mod signing_musig2;
+pub mod pre_signed_musig2;
 pub mod signing;
+pub mod signing_musig2;
 pub mod take_1;
 pub mod take_2;

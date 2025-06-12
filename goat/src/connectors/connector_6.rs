@@ -1,9 +1,7 @@
 use std::collections::HashMap;
 
 use crate::{
-    commitments::CommitmentMessageId,
-    constants::EVM_TXID_LENGTH,
-    transactions::base::Input,
+    commitments::CommitmentMessageId, constants::EVM_TXID_LENGTH, transactions::base::Input,
 };
 
 use bitvm::{
@@ -48,10 +46,13 @@ impl Connector6 {
             { winternitz_message_checksig_verify(evm_withdraw_txid_pubkey, EVM_TXID_LENGTH * 2) }
             { self.operator_taproot_public_key }
             OP_CHECKSIG
-        }.compile()
+        }
+        .compile()
     }
 
-    fn generate_taproot_leaf_0_tx_in(&self, input: &Input) -> TxIn { generate_default_tx_in(input) }
+    fn generate_taproot_leaf_0_tx_in(&self, input: &Input) -> TxIn {
+        generate_default_tx_in(input)
+    }
 }
 
 impl TaprootConnector for Connector6 {

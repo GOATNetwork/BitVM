@@ -1,11 +1,11 @@
-pub mod connectors;
-pub mod contexts;
-pub mod transactions;
 pub mod commitments;
 pub mod common;
+pub mod connectors;
 pub mod constants;
+pub mod contexts;
 pub mod error;
 pub mod proof;
 pub mod scripts;
 pub mod serialization;
+pub mod transactions;
 pub mod utils;

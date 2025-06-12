@@ -1,5 +1,5 @@
-use serde::Deserialize;
 use bitcoin::Network;
+use serde::Deserialize;
 
 pub const DEFAULT_WOTS_SECRET_FILE: &str = "data/private/wots_sec.json";
 pub const DEFAULT_WOTS_PUBKEY_FILE: &str = "data/public/wots_pub.json";
@@ -30,23 +30,22 @@ pub const ASSERT_FINAL_FILE_NAME: &str = "assert-final.json";
 pub const TAKE2_FILE_NAME: &str = "take-2.json";
 pub const DISPROVE_FILE_NAME: &str = "disprove.json";
 
-
 #[derive(Deserialize, Debug, Clone)]
 pub struct Config {
-    #[serde(default)] 
+    #[serde(default)]
     pub general: GeneralConfig,
-    #[serde(default)] 
+    #[serde(default)]
     pub depositor: DepositorConfig,
-    #[serde(default)] 
+    #[serde(default)]
     pub operator: OperatorConfig,
-    #[serde(default)] 
+    #[serde(default)]
     pub federation: FederationConfig,
-    #[serde(default)] 
+    #[serde(default)]
     pub challenger: ChallengerConfig,
 }
 
 #[derive(Deserialize, Debug, Clone)]
-pub struct GeneralConfig {    
+pub struct GeneralConfig {
     #[serde(default = "default_network")]
     pub network: String,
 
@@ -54,7 +53,6 @@ pub struct GeneralConfig {
     pub federation_taproot_pubkey: Option<String>,
     pub operator_pubkey: Option<String>,
     // pub operator_taproot_pubkey: Option<String>,
-
     #[serde(default = "default_txns_dir")]
     pub txns_dir: String,
     #[serde(default = "default_signed_txns_dir")]
@@ -79,29 +77,29 @@ pub struct GeneralConfig {
 }
 
 #[derive(Deserialize, Debug, Default, Clone)]
-pub struct DepositorConfig {    
+pub struct DepositorConfig {
     pub depositor_evm_address: Option<String>,
     // pub depositor_taproot_public_key: Option<String>,
     pub depositor_pubkey: Option<String>,
-    pub depositor_seckey: Option<String>,  
+    pub depositor_seckey: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
-pub struct OperatorConfig {   
+pub struct OperatorConfig {
     #[serde(default = "default_operator_wots_secret_file")]
     pub operator_wots_seckey_file: String,
-    pub operator_seckey: Option<String>,  
+    pub operator_seckey: Option<String>,
 }
 
 #[derive(Deserialize, Debug, Default, Clone)]
-pub struct FederationConfig {  
-    pub federation_seckeys: Option<Vec<String>>,  
+pub struct FederationConfig {
+    pub federation_seckeys: Option<Vec<String>>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
-pub struct ChallengerConfig {   
+pub struct ChallengerConfig {
     #[serde(default = "default_disprove_witness_file")]
-    pub disprove_witness_file: String, 
+    pub disprove_witness_file: String,
 }
 
 pub fn load_config(file: &str) -> Config {
@@ -202,4 +200,3 @@ fn default_signed_assertions_file() -> String {
 fn default_disprove_witness_file() -> String {
     DFFAULT_DISPROVE_WITNESS_FILE.to_string()
 }
-

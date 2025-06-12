@@ -2,48 +2,45 @@ use clap::Subcommand;
 
 #[derive(Subcommand)]
 pub(crate) enum Commands {
-    /// -GENERAL----: generate disprove scripts 
-    GenerateDisproveScripts{
-    },
+    /// -GENERAL----: generate disprove scripts
+    GenerateDisproveScripts {},
 
     /// -GENERAL----: generate all necessary bitvm2 transactions (unsigned)
-    GenerateBitvmInstanace {
-    },
+    GenerateBitvmInstanace {},
 
     /// -DEPOSITOR--: generate pegin-prepare, pegin-comfirm & pegin-refund txns
     GeneratePeginTx {
         /// (sats)  deposit amount of pegin tx
-        #[arg(long="amount")]
+        #[arg(long = "amount")]
         deposit_amount: u64,
 
         /// (sats)  fee amount of pegin tx
-        #[arg(long="fee")]
+        #[arg(long = "fee")]
         fee_amount: u64,
 
         /// (Address) address to receive change
-        #[arg(long="change")]
+        #[arg(long = "change")]
         change_address: String,
 
         /// (array of strings) input utxos for pegin tx
-        /// format: "txid:vout:amount" 
+        /// format: "txid:vout:amount"
         /// example: "f4184fc596403b9d638783cf57adfe4c75c605f6356fbc91338530e9831e9e16:0:10000000000"
         #[arg(long="inputs", num_args = 1.., value_delimiter = ',', required = true)]
         tx_inputs: Vec<String>,
     },
 
     /// -FEDERATION-: push federation members' pre-signature for necessary txns, include: pegin_comfirm, take_1, take_2, assert_final, disprove
-    FederationPresign {
-    },
+    FederationPresign {},
 
-    /// -OPERATOR---: generate winternitz public-keys & secret-keys 
+    /// -OPERATOR---: generate winternitz public-keys & secret-keys
     /// (⚠ Warning: This feature is for testing and development purposes only. It may not be secure enough for production use.)
     GenerateWotsKeys {
         /// (String) a random seed used to generate wots keypairs
         // #[arg(short = 's', long = "seed")]
         secret_seed: String,
-    }, 
+    },
 
-    /// -OPERATOR---: generate winternitz signatures for groth16-proof & intermediate-values 
+    /// -OPERATOR---: generate winternitz signatures for groth16-proof & intermediate-values
     SignProof {
         /// skip verifying the correctness of generated sigs
         #[arg(long)]
@@ -51,16 +48,17 @@ pub(crate) enum Commands {
     },
 
     /// -OPERATOR---: generate pre-kickoff(pegout-confirm) tx
-    GeneratePrekickoffTx { /// (sats)  stake amount of pre-kickof tx
-        #[arg(long="amount")]
+    GeneratePrekickoffTx {
+        /// (sats)  stake amount of pre-kickof tx
+        #[arg(long = "amount")]
         stake_amount: u64,
 
         /// (sats)  fee amount of pre-kickof tx
-        #[arg(long="fee")]
+        #[arg(long = "fee")]
         fee_amount: u64,
 
         /// (Address) address to receive change
-        #[arg(long="change")]
+        #[arg(long = "change")]
         change_address: String,
 
         /// (array of formatted strings) input utxos for prekickoff tx
@@ -71,8 +69,7 @@ pub(crate) enum Commands {
     },
 
     /// -OPERATOR---: push operator's pre-signature necessary txns, include: challenge
-    OperatorPresign {
-    },
+    OperatorPresign {},
 
     /// -OPERATOR---: operator sign txns: include: kickoff, take-1, assert, take-2
     OperatorSign {
@@ -97,25 +94,22 @@ pub(crate) enum Commands {
         take_2: bool,
     },
 
-    /// -CHALLENGER-: check if the groth16-proof(bitcommitments) is valid 
-    VerifyProof {
-    },
+    /// -CHALLENGER-: check if the groth16-proof(bitcommitments) is valid
+    VerifyProof {},
 
     /// -CHALLENGER-: send disprove tx
     Disprove {
         /// address that will receive challenger success reward
         reward_address: String,
     },
-
-
-    /* 
+    /*
     /// -FEDERATION-: generate psbt for federation members
     GenerateFederationPsbt {
         /// (hex String) federation member's public-key
         // #[arg(long)]
         pubkey: String,
     },
-    
+
     /// -OPERATOR---: generate psbt for operator
     GenerateOperatorPsbt {
         // #[arg(long)]
@@ -135,7 +129,7 @@ pub(crate) enum Commands {
     ValidateKickoff {
     },
 
-    /// -CHALLENGER-: check if the groth16-proof(bitcommitments) submitted by operator in assert-tx is valid 
+    /// -CHALLENGER-: check if the groth16-proof(bitcommitments) submitted by operator in assert-tx is valid
     ValidateAssert {
     },
     */

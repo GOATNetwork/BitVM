@@ -1,5 +1,8 @@
 use bitcoin::{
-    absolute, consensus::{self}, Amount, EcdsaSighashType, Network, PublicKey, ScriptBuf, Sequence, Transaction, TxIn, TxOut, Witness
+    absolute,
+    consensus::{self},
+    Amount, EcdsaSighashType, Network, PublicKey, ScriptBuf, Sequence, Transaction, TxIn, TxOut,
+    Witness,
 };
 use serde::{Deserialize, Serialize};
 
@@ -46,7 +49,7 @@ impl PegInDepositTransactionGeneral {
                 lock_time: absolute::LockTime::ZERO,
                 input: vec![_input_0],
                 output: vec![_output_0],
-            }
+            },
         }
     }
 
@@ -54,14 +57,22 @@ impl PegInDepositTransactionGeneral {
         self.tx.input[0].witness = witness
     }
 
-    pub fn tx_mut(&mut self) -> &mut Transaction { &mut self.tx }
+    pub fn tx_mut(&mut self) -> &mut Transaction {
+        &mut self.tx
+    }
 
-    pub fn tx(&self) -> &Transaction { &self.tx }
+    pub fn tx(&self) -> &Transaction {
+        &self.tx
+    }
 }
 
 impl BaseTransaction for PegInDepositTransactionGeneral {
-    fn finalize(&self) -> Transaction { self.tx.clone() }
-    fn name(&self) -> &'static str { "PegInDeposit" }
+    fn finalize(&self) -> Transaction {
+        self.tx.clone()
+    }
+    fn name(&self) -> &'static str {
+        "PegInDeposit"
+    }
 }
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Clone)]
@@ -74,13 +85,21 @@ pub struct PegInDepositTransaction {
 }
 
 impl PreSignedTransaction for PegInDepositTransaction {
-    fn tx(&self) -> &Transaction { &self.tx }
+    fn tx(&self) -> &Transaction {
+        &self.tx
+    }
 
-    fn tx_mut(&mut self) -> &mut Transaction { &mut self.tx }
+    fn tx_mut(&mut self) -> &mut Transaction {
+        &mut self.tx
+    }
 
-    fn prev_outs(&self) -> &Vec<TxOut> { &self.prev_outs }
+    fn prev_outs(&self) -> &Vec<TxOut> {
+        &self.prev_outs
+    }
 
-    fn prev_scripts(&self) -> &Vec<ScriptBuf> { &self.prev_scripts }
+    fn prev_scripts(&self) -> &Vec<ScriptBuf> {
+        &self.prev_scripts
+    }
 }
 
 impl PegInDepositTransaction {
@@ -166,6 +185,10 @@ impl PegInDepositTransaction {
 }
 
 impl BaseTransaction for PegInDepositTransaction {
-    fn finalize(&self) -> Transaction { self.tx.clone() }
-    fn name(&self) -> &'static str { "PegInDeposit" }
+    fn finalize(&self) -> Transaction {
+        self.tx.clone()
+    }
+    fn name(&self) -> &'static str {
+        "PegInDeposit"
+    }
 }

@@ -1,7 +1,7 @@
-use bitcoin::{Transaction, consensus, Txid, Wtxid};
-use serde::{Serialize, Deserialize};
+use bitcoin::{consensus, Transaction, Txid, Wtxid};
 use clap::Parser;
 use reqwest::blocking::Client;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Clone, Debug)]
@@ -30,9 +30,10 @@ fn read_txns(file: &str) -> Vec<SignedTransaction> {
 
     match parsed {
         Value::Array(arr) => {
-            let res: Vec<SignedTransaction> = arr.into_iter().map(|item| {
-                serde_json::from_value(item).unwrap()
-            }).collect();
+            let res: Vec<SignedTransaction> = arr
+                .into_iter()
+                .map(|item| serde_json::from_value(item).unwrap())
+                .collect();
             res
         }
 
@@ -41,7 +42,7 @@ fn read_txns(file: &str) -> Vec<SignedTransaction> {
             vec![res]
         }
 
-        _ => panic!()
+        _ => panic!(),
     }
 }
 
@@ -53,13 +54,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("Sending {}...", tx.txid);
         let tx_hex = bitcoin::consensus::encode::serialize_hex(&tx.tx);
         let client = Client::new();
-        let res = client.post(&args.url)
-            .body(tx_hex)
-            .send()?;
-    
+        let res = client.post(&args.url).body(tx_hex).send()?;
+
         let status = res.status();
         let body = res.text()?;
-    
+
         println!("Status: {}", status);
         println!("Response:\n{}", body);
     }

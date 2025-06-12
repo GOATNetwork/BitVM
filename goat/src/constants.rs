@@ -18,4 +18,3 @@ pub const CONNECTOR_Z_TIMELOCK: u32 = NUM_BLOCKS_PER_2_WEEKS;
 // Commitment message parameters. Hardcoded number of bytes per message.
 pub const EVM_TXID_LENGTH: usize = 64;
 pub const BITCOIN_TXID_LENGTH: usize = 64;
-

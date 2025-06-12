@@ -1372,6 +1372,6 @@ mod test {
                 index_of_bitcommitted_msg.push(seg.id);
             }
             println!("script {i} bitcoms: {:?}", index_of_bitcommitted_msg);
-        };
+        }
     }
 }
