@@ -243,6 +243,9 @@ pub fn extract_data_from_commitment_outputs(txouts: &[TxOut]) -> Vec<u8> {
         if let bitcoin::blockdata::script::Instruction::PushBytes(bytes) = &instructions[1] {
             data.extend_from_slice(bytes.as_bytes());
         }
+        if script.is_op_return() {
+            break;
+        }
     }
     data
 }
