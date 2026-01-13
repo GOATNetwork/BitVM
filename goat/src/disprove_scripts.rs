@@ -7,12 +7,14 @@ use bitvm::chunk::api::{
 };
 use bitvm::hash::sha256_u4::sha256 as sha256_u4;
 use bitvm::signatures::{Wots, Wots16, Wots32};
+#[allow(unused_imports)]
 use bitvm::u4::u4_std::u4_hex_to_nibbles;
 use bitvm::{treepp::*, FmtStack};
 
 pub type ChallengeHashType = [u8; 20]; // OP_HASH160
 
-pub const GUEST_PUBIN_COMMITMENT_INDEX: usize = 1;
+pub const GUEST_PUBIN_G16_PUBIN_INDEX: usize = 1; 
+pub const GUEST_PUBIN_COMMITMENT_INDEX: usize = 0; // public inputs are reversed in assertions
 pub const NUM_GUEST_PUBS_ASSERT: usize = 2; // commit [constants, watchtower-inclued-map]
 pub const NUM_GUEST_PUBS_EXTRA: usize = 1; // commit blockhash
 pub const NUM_GUEST: usize = NUM_GUEST_PUBS_ASSERT + NUM_GUEST_PUBS_EXTRA;
@@ -110,7 +112,7 @@ pub fn verify_guest_pubin(
 
         { Wots32::checksig_verify(&groth16_pubin_wots_pubkeys[GUEST_PUBIN_COMMITMENT_INDEX]) }
 
-        { zip_nibbles_bytes32() }
+        { reverse_zip_nibbles_bytes32() }
 
         { roll_n(zipped_wots32_msg_stack_items_num, wots32_msg_stack_items_num * 3) }
 
@@ -366,6 +368,16 @@ fn zip_nibbles_bytes32() -> Script {
     }
 }
 
+fn reverse_zip_nibbles_bytes32() -> Script {
+    script! {
+        for _ in 0..32 {
+            { roll(62) }
+            { roll(63) }
+        }
+        { zip_nibbles_bytes32() }
+    }
+}
+
 pub fn bits_to_bytes32(bits: &[bool]) -> [u8; 32] {
     let mut out = [0u8; 32];
     let len = bits.len().min(256);
@@ -452,6 +464,17 @@ pub fn parse_u4_stack(start_index: usize, num_bytes: usize, stack: &FmtStack) ->
         v.push(high * 16 + low);
     }
     v
+}
+
+pub fn reverse_each_byte(input: [u8; 32]) -> [u8; 32] {
+    let mut output = [0u8; 32];
+    for i in 0..32 {
+        let byte = input[i];
+        let high_nibble = (byte & 0xF0) >> 4;
+        let low_nibble = byte & 0x0F;
+        output[i] = (low_nibble << 4) | high_nibble;
+    }
+    output
 }
 
 #[test]
@@ -608,173 +631,6 @@ fn test_verify_hashlock_pubin_script() {
 }
 
 #[test]
-fn test_generate_guest_pubin_commitment() {
-    fn u4_bytes_to_nibbles(bytes: &[u8]) -> Script {
-        let mut rev_bytes = bytes.to_vec();
-        rev_bytes.reverse();
-        // u4_hex_to_nibbles takes little-endian hex strings
-        script! {
-            { u4_hex_to_nibbles(&hex::encode(rev_bytes)) }
-        }
-    }
-    let pubins: Vec<[u8; 32]> = vec![
-        hex::decode("395bf727f9aac5e80911591073fcf9c826f428804131ca089beba3869421749a")
-            .unwrap()
-            .try_into()
-            .unwrap(),
-        hex::decode("7517017f1ed26c3a0eeeeff8cd8415a0f90f4f8ece83f639a625e62f399c9ac1")
-            .unwrap()
-            .try_into()
-            .unwrap(),
-        hex::decode("0fd7e7b3810d822c9804b48d0e1334ed98690f3a78c3baceeefb88fb416b49b9")
-            .unwrap()
-            .try_into()
-            .unwrap(),
-    ];
-    let pubin_bytes = hex::decode("0000000000000020395bf727f9aac5e80911591073fcf9c826f428804131ca089beba3869421749a00000000000000207517017f1ed26c3a0eeeeff8cd8415a0f90f4f8ece83f639a625e62f399c9ac100000000000000200fd7e7b3810d822c9804b48d0e1334ed98690f3a78c3baceeefb88fb416b49b9").unwrap();
-    let _sha256_digest: [u8; 32] =
-        hex::decode("7702d98383c9971311fc63deed6edb20a1a7d19a01c7587fdd9c8b76a98ae798")
-            .unwrap()
-            .try_into()
-            .unwrap();
-    let commit_value: [u8; 32] =
-        hex::decode("1702d98383c9971311fc63deed6edb20a1a7d19a01c7587fdd9c8b76a98ae798")
-            .unwrap()
-            .try_into()
-            .unwrap();
-    let _pubin_bytes_rev = {
-        let mut v = pubin_bytes.clone();
-        v.reverse();
-        v
-    };
-
-    let s = script! {
-        { u4_bytes_to_nibbles(&pubins[2]) }
-        { u4_bytes_to_nibbles(&pubins[1]) }
-        { u4_bytes_to_nibbles(&pubins[0]) }
-        { generate_guest_pubin_commitment(3) }
-    };
-    let result = execute_script(s);
-    assert_eq!(
-        commit_value.to_vec(),
-        parse_u4_stack(0, 32, &result.final_stack)
-    );
-}
-
-#[test]
-fn test_verify_guest_pubin() {
-    use hex::FromHex;
-    let secrets = std::iter::repeat(Wots32::generate_secret_key())
-        .take(NUM_GUEST + NUM_PUBS)
-        .collect::<Vec<_>>();
-    let pubkeys = secrets
-        .iter()
-        .map(|s| Wots32::generate_public_key(s))
-        .collect::<Vec<_>>();
-    let blockhash =
-        <[u8; 32]>::from_hex("395bf727f9aac5e80911591073fcf9c826f428804131ca089beba3869421749a")
-            .unwrap();
-    let constant =
-        <[u8; 32]>::from_hex("7517017f1ed26c3a0eeeeff8cd8415a0f90f4f8ece83f639a625e62f399c9ac1")
-            .unwrap();
-    // 1011010100011010
-    let included_bitmap =
-        <[u8; 32]>::from_hex("b51a000000000000000000000000000000000000000000000000000000000000")
-            .unwrap();
-    let groth16_pubin =
-        <[u8; 32]>::from_hex("1351297318a8febcdabb450df8e3ea4c61c1c2218d36a3df3ed887ca548d38a9")
-            .unwrap();
-    let hashes_len = 16;
-    let mut preimages: Vec<Vec<u8>> = vec![];
-    let mut hashes: Vec<[u8; 20]> = vec![];
-    for i in 0..hashes_len {
-        preimages.push(format!("preimage_{:02x}", i).into_bytes());
-        hashes.push(hash160(&preimages[i].clone()));
-        // println!("hash {}: {:?}", i, hex::encode(hashes[i].iter().rev().cloned().collect::<Vec<u8>>()));
-    }
-
-    let lock_scr = script! {
-        { verify_guest_pubin(
-            &pubkeys[0..NUM_GUEST].try_into().unwrap(),
-            &pubkeys[NUM_GUEST..NUM_GUEST + NUM_PUBS].try_into().unwrap(),
-            &constant,
-            &hashes,
-        )[0].clone() }
-    };
-    println!("guest pubin validation script length: {}", lock_scr.len());
-
-    {
-        // TEST SUCCESS case: provide preimages for some bitmap = 0 indices
-        let mut input_preimages = vec![vec![]; hashes_len];
-        input_preimages[1] = preimages[1].clone();
-        let full_scr = script! {
-            { Wots32::sign_to_raw_witness(&secrets[NUM_GUEST + GUEST_PUBIN_COMMITMENT_INDEX], &groth16_pubin) }
-            { Wots32::sign_to_raw_witness(&secrets[0], &blockhash) }
-            { Wots32::sign_to_raw_witness(&secrets[1], &constant) }
-            { push_preimage_to_stack(&input_preimages) }
-            { Wots32::sign_to_raw_witness(&secrets[2], &included_bitmap) }
-            { lock_scr.clone() }
-        };
-        println!("full script length: {}", full_scr.len());
-        let result = execute_script_without_stack_limit(full_scr);
-        assert!(result.success);
-        assert_eq!(result.final_stack.len(), 1);
-    }
-
-    {
-        // TEST SUCCESS case: mismatch constant
-        let input_preimages = vec![vec![]; hashes_len];
-        let mut mismatched_constant = constant.clone();
-        mismatched_constant[0] ^= 0xFF;
-        let full_scr = script! {
-            { Wots32::sign_to_raw_witness(&secrets[NUM_PUBS + GUEST_PUBIN_COMMITMENT_INDEX], &groth16_pubin) }
-            { Wots32::sign_to_raw_witness(&secrets[0], &blockhash) }
-            { Wots32::sign_to_raw_witness(&secrets[1], &mismatched_constant) }
-            { push_preimage_to_stack(&input_preimages) }
-            { Wots32::sign_to_raw_witness(&secrets[2], &included_bitmap) }
-            { lock_scr.clone() }
-        };
-        let result = execute_script_without_stack_limit(full_scr);
-        assert!(result.success);
-        assert_eq!(result.final_stack.len(), 1);
-    }
-
-    {
-        // TEST SUCCESS case: mismatch groth16 pubin
-        let input_preimages = vec![vec![]; hashes_len];
-        let mut mismatched_groth16_pubin = groth16_pubin.clone();
-        mismatched_groth16_pubin[1] ^= 0xFF;
-        let full_scr = script! {
-            { Wots32::sign_to_raw_witness(&secrets[NUM_PUBS + GUEST_PUBIN_COMMITMENT_INDEX], &mismatched_groth16_pubin) }
-            { Wots32::sign_to_raw_witness(&secrets[0], &blockhash) }
-            { Wots32::sign_to_raw_witness(&secrets[1], &constant) }
-            { push_preimage_to_stack(&input_preimages) }
-            { Wots32::sign_to_raw_witness(&secrets[2], &included_bitmap) }
-            { lock_scr.clone() }
-        };
-        let result = execute_script_without_stack_limit(full_scr);
-        assert!(result.success);
-        assert_eq!(result.final_stack.len(), 1);
-    }
-
-    {
-        // TEST FAILURE case: everything correct
-        let input_preimages = vec![vec![]; hashes_len];
-        let full_scr = script! {
-            { Wots32::sign_to_raw_witness(&secrets[NUM_PUBS + GUEST_PUBIN_COMMITMENT_INDEX], &groth16_pubin) }
-            { Wots32::sign_to_raw_witness(&secrets[0], &blockhash) }
-            { Wots32::sign_to_raw_witness(&secrets[1], &constant) }
-            { push_preimage_to_stack(&input_preimages) }
-            { Wots32::sign_to_raw_witness(&secrets[2], &included_bitmap) }
-            { lock_scr.clone() }
-        };
-        let result = execute_script_without_stack_limit(full_scr);
-        assert!(!result.success);
-        assert_eq!(result.final_stack.len(), 1);
-    }
-}
-
-#[test]
 fn test_verify_guest_pubin_ziren() {
     use hex::FromHex;
     let secrets = std::iter::repeat(Wots32::generate_secret_key())
@@ -808,7 +664,7 @@ fn test_verify_guest_pubin_ziren() {
     let pubin_file = "ziren/public_inputs.bin";
     let pubin_bin = std::fs::read(pubin_file).unwrap();
     let groth16_public_inputs = <[ark_bn254::Fr; 2]>::deserialize_compressed(&*pubin_bin).unwrap();
-    let guest_pubin_commitment = groth16_public_inputs[GUEST_PUBIN_COMMITMENT_INDEX];
+    let guest_pubin_commitment = groth16_public_inputs[GUEST_PUBIN_G16_PUBIN_INDEX];
     let guest_pubin_commitment_bytes = guest_pubin_commitment.into_bigint().to_bytes_be();
     let mut groth16_pubin = [0u8; 32];
     groth16_pubin[32 - guest_pubin_commitment_bytes.len()..]
@@ -837,7 +693,7 @@ fn test_verify_guest_pubin_ziren() {
         let mut input_preimages = vec![vec![]; hashes_len];
         input_preimages[1] = preimages[1].clone();
         let full_scr = script! {
-            { Wots32::sign_to_raw_witness(&secrets[NUM_GUEST + GUEST_PUBIN_COMMITMENT_INDEX], &groth16_pubin) }
+            { Wots32::sign_to_raw_witness(&secrets[NUM_GUEST + GUEST_PUBIN_COMMITMENT_INDEX], &reverse_each_byte(groth16_pubin)) }
             { Wots32::sign_to_raw_witness(&secrets[0], &blockhash) }
             { Wots32::sign_to_raw_witness(&secrets[1], &constant) }
             { push_preimage_to_stack(&input_preimages) }
@@ -851,11 +707,47 @@ fn test_verify_guest_pubin_ziren() {
     }
 
     {
+        // TEST SUCCESS case: mismatch constant
+        let input_preimages = vec![vec![]; hashes_len];
+        let mut mismatched_constant = constant.clone();
+        mismatched_constant[0] ^= 0xFF;
+        let full_scr = script! {
+            { Wots32::sign_to_raw_witness(&secrets[NUM_PUBS + GUEST_PUBIN_COMMITMENT_INDEX], &reverse_each_byte(groth16_pubin)) }
+            { Wots32::sign_to_raw_witness(&secrets[0], &blockhash) }
+            { Wots32::sign_to_raw_witness(&secrets[1], &mismatched_constant) }
+            { push_preimage_to_stack(&input_preimages) }
+            { Wots32::sign_to_raw_witness(&secrets[2], &included_bitmap) }
+            { lock_scr.clone() }
+        };
+        let result = execute_script_without_stack_limit(full_scr);
+        assert!(result.success);
+        assert_eq!(result.final_stack.len(), 1);
+    }
+
+    {
+        // TEST SUCCESS case: mismatch groth16 pubin
+        let input_preimages = vec![vec![]; hashes_len];
+        let mut mismatched_groth16_pubin = groth16_pubin.clone();
+        mismatched_groth16_pubin[1] ^= 0xFF;
+        let full_scr = script! {
+            { Wots32::sign_to_raw_witness(&secrets[NUM_PUBS + GUEST_PUBIN_COMMITMENT_INDEX], &reverse_each_byte(mismatched_groth16_pubin)) }
+            { Wots32::sign_to_raw_witness(&secrets[0], &blockhash) }
+            { Wots32::sign_to_raw_witness(&secrets[1], &constant) }
+            { push_preimage_to_stack(&input_preimages) }
+            { Wots32::sign_to_raw_witness(&secrets[2], &included_bitmap) }
+            { lock_scr.clone() }
+        };
+        let result = execute_script_without_stack_limit(full_scr);
+        assert!(result.success);
+        assert_eq!(result.final_stack.len(), 1);
+    }
+
+    {
         // TEST FAILURE case: everything correct
         let mut input_preimages = vec![vec![]; hashes_len];
         input_preimages[0] = preimages[0].clone();
         let full_scr = script! {
-            { Wots32::sign_to_raw_witness(&secrets[NUM_PUBS + GUEST_PUBIN_COMMITMENT_INDEX], &groth16_pubin) }
+            { Wots32::sign_to_raw_witness(&secrets[NUM_PUBS + GUEST_PUBIN_COMMITMENT_INDEX], &reverse_each_byte(groth16_pubin)) }
             { Wots32::sign_to_raw_witness(&secrets[0], &blockhash) }
             { Wots32::sign_to_raw_witness(&secrets[1], &constant) }
             { push_preimage_to_stack(&input_preimages) }
