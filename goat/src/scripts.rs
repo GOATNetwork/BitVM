@@ -6,7 +6,7 @@ use bitcoin::{
 use bitvm::treepp::script;
 use std::{str::FromStr, sync::LazyLock};
 
-use crate::transactions::base::DUST_AMOUNT;
+use crate::transactions::base::{DUST_AMOUNT, P2A_AMOUNT};
 
 // TODO replace these public keys
 pub static UNSPENDABLE_PUBLIC_KEY: LazyLock<PublicKey> = LazyLock::new(|| {
@@ -172,7 +172,7 @@ pub fn generate_opreturn_script(msg: Vec<u8>) -> ScriptBuf {
 }
 
 pub fn p2a_amount() -> Amount {
-    Amount::from_sat(240)
+    Amount::from_sat(P2A_AMOUNT)
 }
 
 pub fn p2a_script() -> ScriptBuf {

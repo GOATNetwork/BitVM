@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     connectors::base::TaprootConnector,
-    contexts::{base::BaseContext, verifier::VerifierContext},
+    contexts::{base::BaseContext, committee::CommitteeContext},
     error::Error,
     transactions::{
         signing::push_taproot_leaf_script_and_control_block_to_witness,
@@ -85,14 +85,14 @@ impl ChallengeTransaction {
 
     fn sign_input_0_musig2(
         &mut self,
-        context: &VerifierContext,
+        context: &CommitteeContext,
         sec_nonce: &SecNonce,
         agg_nonce: &AggNonce,
     ) -> Result<PartialSignature, SigningError> {
         let input_index = 0;
         let sighash_type = TapSighashType::SinglePlusAnyoneCanPay;
         generate_taproot_partial_signature(
-            &context,
+            context,
             self.tx(),
             sec_nonce,
             agg_nonce,
@@ -128,7 +128,7 @@ impl ChallengeTransaction {
 
     pub fn pre_sign(
         &mut self,
-        context: &VerifierContext,
+        context: &CommitteeContext,
         sec_nonces: &[SecNonce; 1],
         agg_nonces: &[AggNonce; 1],
     ) -> Result<[PartialSignature; 1], SigningError> {
@@ -175,7 +175,7 @@ impl ChallengeTransaction {
         connector_a: &ConnectorA,
         pre_sigs: [bitcoin::taproot::Signature; 1],
     ) {
-        self.push_input_0_signature(connector_a, pre_sigs[0].clone());
+        self.push_input_0_signature(connector_a, pre_sigs[0]);
     }
 }
 

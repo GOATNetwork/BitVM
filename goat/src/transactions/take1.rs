@@ -19,7 +19,7 @@ use super::{
             base::*, connector_0::Connector0, connector_a::ConnectorA,
             kickoff_connectors::GuardianConnector,
         },
-        contexts::{operator::OperatorContext, verifier::VerifierContext},
+        contexts::{committee::CommitteeContext, operator::OperatorContext},
         scripts::*,
     },
     base::*,
@@ -53,6 +53,7 @@ impl PreSignedTransaction for Take1Transaction {
     }
 }
 impl Take1Transaction {
+    #[allow(clippy::too_many_arguments)]
     pub fn new_for_validation(
         connector_0: &Connector0,
         connector_a: &ConnectorA,
@@ -140,14 +141,14 @@ impl Take1Transaction {
 
     fn sign_input_0_musig2(
         &mut self,
-        context: &VerifierContext,
+        context: &CommitteeContext,
         sec_nonce: &SecNonce,
         agg_nonce: &AggNonce,
     ) -> Result<PartialSignature, SigningError> {
         let input_index = 0;
         let sighash_type = TapSighashType::All;
         generate_taproot_partial_signature(
-            &context,
+            context,
             self.tx(),
             sec_nonce,
             agg_nonce,
@@ -181,14 +182,58 @@ impl Take1Transaction {
         );
     }
 
+    fn sign_input_3_musig2(
+        &mut self,
+        context: &CommitteeContext,
+        sec_nonce: &SecNonce,
+        agg_nonce: &AggNonce,
+    ) -> Result<PartialSignature, SigningError> {
+        let input_index = 3;
+        let sighash_type = TapSighashType::All;
+        generate_taproot_partial_signature(
+            context,
+            self.tx(),
+            sec_nonce,
+            agg_nonce,
+            input_index,
+            self.prev_outs(),
+            &self.prev_scripts()[input_index],
+            sighash_type,
+        )
+    }
+
+    fn push_input_3_signature(
+        &mut self,
+        connector_c: &ConnectorC,
+        input_3_sig: bitcoin::taproot::Signature,
+    ) {
+        let input_index = 3;
+        let script = self.prev_scripts()[input_index].clone();
+        let spend_info = connector_c.generate_taproot_spend_info();
+        let tx_mut = self.tx_mut();
+        // Push signature to witness
+        tx_mut.input[input_index]
+            .witness
+            .push(input_3_sig.serialize());
+
+        // Push script + control block
+        push_taproot_leaf_script_and_control_block_to_witness(
+            tx_mut,
+            input_index,
+            &spend_info,
+            &script,
+        );
+    }
+
     pub fn pre_sign(
         &mut self,
-        context: &VerifierContext,
-        sec_nonces: &[SecNonce; 1],
-        agg_nonces: &[AggNonce; 1],
-    ) -> Result<[PartialSignature; 1], SigningError> {
+        context: &CommitteeContext,
+        sec_nonces: &[SecNonce; 2],
+        agg_nonces: &[AggNonce; 2],
+    ) -> Result<[PartialSignature; 2], SigningError> {
         let input_0_sig = self.sign_input_0_musig2(context, &sec_nonces[0], &agg_nonces[0]);
-        match [input_0_sig]
+        let input_3_sig = self.sign_input_3_musig2(context, &sec_nonces[1], &agg_nonces[1]);
+        match [input_0_sig, input_3_sig]
             .into_iter()
             .collect::<Result<Vec<PartialSignature>, SigningError>>()
         {
@@ -200,37 +245,63 @@ impl Take1Transaction {
     pub fn aggregate_pre_sigs(
         &self,
         context: &dyn BaseContext,
-        partial_signatures: &[Vec<PartialSignature>; 1],
-        agg_nonces: &[AggNonce; 1],
-    ) -> Result<[bitcoin::taproot::Signature; 1], Error> {
-        let input_index = 0;
-        let sig_index = 0;
-        let sighash_type = TapSighashType::All;
-        let input_0_sig = match generate_taproot_aggregated_signature(
-            context,
-            self.tx(),
-            &agg_nonces[sig_index],
-            input_index,
-            self.prev_outs(),
-            &self.prev_scripts()[input_index],
-            sighash_type,
-            partial_signatures[sig_index].clone(),
-        ) {
-            Ok(sig) => bitcoin::taproot::Signature {
-                signature: sig.into(),
+        partial_signatures: &[Vec<PartialSignature>; 2],
+        agg_nonces: &[AggNonce; 2],
+    ) -> Result<[bitcoin::taproot::Signature; 2], Error> {
+        let (input_0_sig, input_3_sig);
+        {
+            let input_index = 0;
+            let sig_index = 0;
+            let sighash_type = TapSighashType::All;
+            input_0_sig = match generate_taproot_aggregated_signature(
+                context,
+                self.tx(),
+                &agg_nonces[sig_index],
+                input_index,
+                self.prev_outs(),
+                &self.prev_scripts()[input_index],
                 sighash_type,
-            },
-            Err(_) => return Err(Error::Other("Failed to aggregate signatures")),
-        };
-        Ok([input_0_sig])
+                partial_signatures[sig_index].clone(),
+            ) {
+                Ok(sig) => bitcoin::taproot::Signature {
+                    signature: sig.into(),
+                    sighash_type,
+                },
+                Err(_) => return Err(Error::Other("Failed to aggregate signatures")),
+            };
+        }
+        {
+            let input_index = 3;
+            let sig_index = 1;
+            let sighash_type = TapSighashType::All;
+            input_3_sig = match generate_taproot_aggregated_signature(
+                context,
+                self.tx(),
+                &agg_nonces[sig_index],
+                input_index,
+                self.prev_outs(),
+                &self.prev_scripts()[input_index],
+                sighash_type,
+                partial_signatures[sig_index].clone(),
+            ) {
+                Ok(sig) => bitcoin::taproot::Signature {
+                    signature: sig.into(),
+                    sighash_type,
+                },
+                Err(_) => return Err(Error::Other("Failed to aggregate signatures")),
+            };
+        }
+        Ok([input_0_sig, input_3_sig])
     }
 
     pub fn push_pre_sigs(
         &mut self,
         connector_0: &Connector0,
-        pre_sigs: [bitcoin::taproot::Signature; 1],
+        connector_c: &ConnectorC,
+        pre_sigs: [bitcoin::taproot::Signature; 2],
     ) {
-        self.push_input_0_signature(connector_0, pre_sigs[0].clone());
+        self.push_input_0_signature(connector_0, pre_sigs[0]);
+        self.push_input_3_signature(connector_c, pre_sigs[1]);
     }
 
     pub fn sign_input_1(&mut self, context: &OperatorContext, connector_a: &ConnectorA) {
@@ -251,17 +322,6 @@ impl Take1Transaction {
             input_index,
             TapSighashType::All,
             connector_b.generate_taproot_spend_info(),
-            &vec![&context.operator_keypair],
-        );
-    }
-
-    pub fn sign_input_3(&mut self, context: &OperatorContext, connector_c: &ConnectorC) {
-        let input_index = 3;
-        pre_sign_taproot_input_default(
-            self,
-            input_index,
-            TapSighashType::All,
-            connector_c.generate_taproot_spend_info(),
             &vec![&context.operator_keypair],
         );
     }

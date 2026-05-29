@@ -1,4 +1,5 @@
 use super::pre_signed_musig2::{verify_public_nonce, PreSignedMusig2Transaction};
+use crate::error::Error;
 use bitcoin::policy::{DEFAULT_MIN_RELAY_TX_FEE, DUST_RELAY_TX_FEE};
 use bitcoin::{consensus, Amount, OutPoint, PublicKey, Script, Transaction, Txid, XOnlyPublicKey};
 use core::cmp;
@@ -21,24 +22,57 @@ pub const ACCELERATE_FEE_MULTIPLIER: u64 = 2;
 pub const MIN_RELAY_FEE_KICKOFF: u64 = relay_fee(500);
 pub const MIN_RELAY_FEE_TAKE_1: u64 = relay_fee(500);
 pub const MIN_RELAY_FEE_TAKE_2: u64 = relay_fee(500);
+pub const MIN_RELAY_FEE_VERIFIER_ASSERT: u64 = relay_fee(60000);
+pub const MIN_RELAY_FEE_WRONGLY_CHALLENGED: u64 = relay_fee(1500);
+pub const MIN_RELAY_FEE_DISPROVE: u64 = relay_fee(800);
+pub const P2A_AMOUNT: u64 = 240;
 pub const fn min_relay_fee_watchtower_challenge_init(watchtower_num: usize) -> u64 {
-    relay_fee(watchtower_num * 200 + 500)
+    relay_fee(watchtower_num * 100 + 200)
 }
-pub const fn min_relay_fee_assert_init(num_assert_commits: usize) -> u64 {
-    relay_fee(num_assert_commits * 100 + 300)
+pub const fn min_relay_fee_operator_assert(num_verifier: usize) -> u64 {
+    relay_fee(num_verifier * 100 + 15000)
 }
-pub const fn max_assert_cost(num_assert_commits: usize) -> u64 {
-    min_relay_fee_assert_init(num_assert_commits) + (num_assert_commits + 2) as u64 * DUST_AMOUNT
+pub const fn wrongly_challenged_input_amount() -> u64 {
+    MIN_RELAY_FEE_WRONGLY_CHALLENGED + P2A_AMOUNT
+}
+pub const fn verifier_assert_prover_output_amount() -> u64 {
+    max(DUST_AMOUNT, wrongly_challenged_input_amount())
+}
+pub const fn verifier_assert_input_amount() -> u64 {
+    MIN_RELAY_FEE_VERIFIER_ASSERT + verifier_assert_prover_output_amount() + P2A_AMOUNT
+}
+pub const fn disprove_input_amount() -> u64 {
+    MIN_RELAY_FEE_DISPROVE + P2A_AMOUNT
+}
+pub const fn connector_d_assert_output_amount() -> u64 {
+    if disprove_input_amount() > verifier_assert_prover_output_amount() {
+        max(
+            DUST_AMOUNT,
+            disprove_input_amount() - verifier_assert_prover_output_amount(),
+        )
+    } else {
+        DUST_AMOUNT
+    }
+}
+pub const fn operator_assert_input_amount(num_verifier: usize) -> u64 {
+    min_relay_fee_operator_assert(num_verifier)
+        + num_verifier as u64 * verifier_assert_input_amount()
+        + connector_d_assert_output_amount()
+        + P2A_AMOUNT
+}
+pub const fn max_assert_cost(num_verifier: usize) -> u64 {
+    operator_assert_input_amount(num_verifier)
 }
 pub const fn max_watchtower_challenge_cost(num_watchtowers: usize) -> u64 {
     min_relay_fee_watchtower_challenge_init(num_watchtowers)
-        + (num_watchtowers * 2 + 3) as u64 * DUST_AMOUNT
+        + num_watchtowers as u64 * DUST_AMOUNT
+        + P2A_AMOUNT
 }
-pub const fn max_pegout_cost(num_watchtowers: usize, num_assert_commits: usize) -> u64 {
-    max_assert_cost(num_assert_commits)
+pub const fn max_pegout_cost(num_watchtowers: usize, num_verifier: usize) -> u64 {
+    max_assert_cost(num_verifier)
         + max_watchtower_challenge_cost(num_watchtowers)
         + MIN_RELAY_FEE_KICKOFF
-        + DUST_AMOUNT * 4
+        + DUST_AMOUNT * 2
 }
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Clone)]
@@ -53,6 +87,69 @@ pub struct InputWithScript<'a> {
     pub outpoint: OutPoint,
     pub amount: Amount,
     pub script: &'a Script,
+}
+
+pub fn tx_output_input(transaction: &Transaction, vout: usize) -> Result<Input, Error> {
+    let output = transaction
+        .output
+        .get(vout)
+        .ok_or(Error::Other("transaction output index out of bounds"))?;
+    let vout = vout
+        .try_into()
+        .map_err(|_| Error::Other("transaction output index exceeds u32"))?;
+
+    Ok(Input {
+        outpoint: OutPoint {
+            txid: transaction.compute_txid(),
+            vout,
+        },
+        amount: output.value,
+    })
+}
+
+pub mod output_topology {
+    pub mod kickoff {
+        pub const CONNECTOR_A: usize = 0;
+        pub const CONNECTOR_B: usize = 1;
+        pub const CONNECTOR_C: usize = 2;
+        pub const GUARDIAN_CONNECTOR: usize = 3;
+        pub const ANCHOR: usize = 4;
+    }
+
+    pub mod prekickoff {
+        pub const FORCE_SKIP_CONNECTOR: usize = 0;
+        pub const KICKOFF_CONNECTOR: usize = 1;
+        pub const PREKICKOFF_CONNECTOR: usize = 2;
+        pub const ANCHOR: usize = 3;
+    }
+
+    pub mod watchtower_challenge_init {
+        pub const WATCHTOWER_CONNECTOR_START: usize = 0;
+
+        pub const fn watchtower_connector(index: usize) -> usize {
+            WATCHTOWER_CONNECTOR_START + index
+        }
+
+        pub const fn anchor(watchtower_num: usize) -> usize {
+            WATCHTOWER_CONNECTOR_START + watchtower_num
+        }
+    }
+
+    pub mod operator_assert {
+        pub const VERIFIER_CONNECTOR_START: usize = 0;
+
+        pub const fn verifier_connector(index: usize) -> usize {
+            VERIFIER_CONNECTOR_START + index
+        }
+
+        pub const fn connector_d(verifier_num: usize) -> usize {
+            VERIFIER_CONNECTOR_START + verifier_num
+        }
+
+        pub const fn anchor(verifier_num: usize) -> usize {
+            connector_d(verifier_num) + 1
+        }
+    }
 }
 
 pub trait BaseTransaction {
@@ -223,10 +320,10 @@ mod tests {
 
     const DUMMY_TXID: &str = "5df6e0e2761359d30a8275058e299fcc0381534545f55cf43e41983f5d4c9456";
 
-    fn get_test_nonces() -> (
-        HashMap<usize, HashMap<PublicKey, PubNonce>>,
-        HashMap<usize, HashMap<PublicKey, Signature>>,
-    ) {
+    type TestNonces = HashMap<usize, HashMap<PublicKey, PubNonce>>;
+    type TestNonceSignatures = HashMap<usize, HashMap<PublicKey, Signature>>;
+
+    fn get_test_nonces() -> (TestNonces, TestNonceSignatures) {
         const SIGNERS: usize = 3;
         const INPUTS: usize = 4;
 

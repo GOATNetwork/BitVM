@@ -25,9 +25,7 @@ pub fn serialize_pubin(pubin: Vec<ark_bn254::Fr>) -> Vec<u8> {
         use ark_ff::BigInt;
         use ark_ff::PrimeField;
 
-        let f_big = match f.into_bigint() {
-            BigInt(x) => x,
-        };
+        let BigInt(f_big) = f.into_bigint();
         let mut res = Vec::with_capacity(f_big.len() * 8);
         for &num in f_big.iter() {
             res.extend_from_slice(&num.to_le_bytes());
@@ -60,7 +58,7 @@ pub fn deserialize_vk(buffer: Vec<u8>) -> ark_groth16::VerifyingKey<Bn254> {
     .unwrap()
 }
 pub fn deserialize_pubin(buffer: Vec<u8>) -> Vec<ark_bn254::Fr> {
-    fn tmp_fr_deserialization(v: Vec<u8>) -> ark_bn254::Fr {
+    fn tmp_fr_deserialization(v: &[u8]) -> ark_bn254::Fr {
         use ark_ff::BigInt;
         use ark_ff::PrimeField;
 
@@ -73,8 +71,8 @@ pub fn deserialize_pubin(buffer: Vec<u8>) -> Vec<ark_bn254::Fr> {
 
     let buffer: Vec<Vec<u8>> = bincode::deserialize(&buffer).unwrap();
     let mut pubin = vec![];
-    for i in 0..buffer.len() {
-        let f = tmp_fr_deserialization(buffer[i].clone());
+    for item in &buffer {
+        let f = tmp_fr_deserialization(item);
         pubin.push(f);
     }
     pubin
@@ -84,6 +82,7 @@ pub fn deserialize_pubin(buffer: Vec<u8>) -> Vec<ark_bn254::Fr> {
 #[ignore]
 #[allow(deprecated)]
 fn verify_zkm2_proof() {
+    use crate::wots::{Wots, Wots16, Wots32};
     /// TODO: Update NUM_PUBS, NUM_256, NUM_160, mock_proof
     /// NUM_PUBS = 2
     /// NUM_256 = 14
@@ -92,12 +91,11 @@ fn verify_zkm2_proof() {
         api_generate_full_tapscripts, api_generate_partial_script, generate_signatures,
         validate_assertions, PublicKeys, NUM_HASH, NUM_PUBS, NUM_U256,
     };
-    use bitvm::signatures::{Wots, Wots16, Wots32};
     fn get_pubkeys(secret_key: Vec<String>) -> PublicKeys {
         let mut pubins = vec![];
-        for i in 0..NUM_PUBS {
+        for secret in secret_key.iter().take(NUM_PUBS) {
             pubins.push(Wots32::generate_public_key(&Wots32::secret_from_str(
-                secret_key[i].as_str(),
+                secret.as_str(),
             )));
         }
         let mut fq_arr = vec![];
@@ -218,12 +216,7 @@ fn genearte_test_proof() {
 
     impl<F: PrimeField> Clone for DummyCircuit<F> {
         fn clone(&self) -> Self {
-            DummyCircuit {
-                a: self.a,
-                b: self.b,
-                num_variables: self.num_variables,
-                num_constraints: self.num_constraints,
-            }
+            *self
         }
     }
 

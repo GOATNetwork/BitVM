@@ -1,35 +1,80 @@
+use crate::{assert_scripts::*, utils::remove_script_and_control_block_from_witness};
 use bitcoin::{
     taproot::{TaprootBuilder, TaprootSpendInfo},
     Address, Network, ScriptBuf, TxIn, XOnlyPublicKey,
 };
+use bitvm::{chunk::api::type_conversion_utils::RawWitness, treepp::*};
 use secp256k1::SECP256K1;
 use serde::{Deserialize, Serialize};
+use serde_big_array::BigArray;
 
 use super::{
-    super::{scripts::*, transactions::base::Input},
+    super::{error::Error, scripts::*, transactions::base::Input, wots::*},
     base::*,
 };
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct ConnectorC {
     pub network: Network,
-    pub operator_taproot_public_key: XOnlyPublicKey,
+    pub n_of_n_taproot_public_key: XOnlyPublicKey,
+    #[serde(with = "BigArray")]
+    pub operator_wots_public_key: OperatorAssertPublicKey,
 }
 
 impl ConnectorC {
-    pub fn new(network: Network, operator_taproot_public_key: &XOnlyPublicKey) -> Self {
+    pub fn new(
+        network: Network,
+        n_of_n_taproot_public_key: &XOnlyPublicKey,
+        operator_wots_public_key: &OperatorAssertPublicKey,
+    ) -> Self {
         ConnectorC {
             network,
-            operator_taproot_public_key: *operator_taproot_public_key,
+            n_of_n_taproot_public_key: *n_of_n_taproot_public_key,
+            operator_wots_public_key: *operator_wots_public_key,
         }
     }
 
     fn generate_taproot_leaf_0_script(&self) -> ScriptBuf {
-        generate_pay_to_pubkey_taproot_script(&self.operator_taproot_public_key)
+        generate_pay_to_pubkey_taproot_script(&self.n_of_n_taproot_public_key)
     }
 
     fn generate_taproot_leaf_0_tx_in(&self, input: &Input) -> TxIn {
         generate_default_tx_in(input)
+    }
+
+    fn generate_taproot_leaf_1_script(&self) -> ScriptBuf {
+        verify_prover_assert_script_512_wire(&self.operator_wots_public_key).compile()
+    }
+
+    fn generate_taproot_leaf_1_tx_in(&self, input: &Input) -> TxIn {
+        generate_default_tx_in(input)
+    }
+
+    pub fn generate_leaf_1_unlock_data(
+        &self,
+        sk: &OperatorAssertSecretKey,
+        proof: &[u8; 64],
+    ) -> Result<Vec<Vec<u8>>, Error> {
+        let witness = Wots64::sign_to_raw_witness(sk, proof);
+        let witness_script = script! {
+            { witness.clone() }
+        };
+        let verification_script = witness_script.push_script(self.generate_taproot_leaf_1_script());
+        let exec_result = execute_script(verification_script);
+        match exec_result.success {
+            true => Ok(witness.to_vec()),
+            false => Err(Error::Other("Invalid WOTS secret-key for Connector-C.")),
+        }
+    }
+
+    pub fn extract_leaf_1_raw_witness(&self, txin: &TxIn) -> Result<RawWitness, Error> {
+        let witness = txin.witness.to_vec();
+        if witness.len() != PROVER_SIG_LEN + 2 {
+            return Err(Error::Other(
+                "Invalid witness length for Connector-C leaf 1.",
+            ));
+        }
+        Ok(remove_script_and_control_block_from_witness(witness))
     }
 }
 
@@ -37,6 +82,7 @@ impl TaprootConnector for ConnectorC {
     fn generate_taproot_leaf_script(&self, leaf_index: u32) -> ScriptBuf {
         match leaf_index {
             0 => self.generate_taproot_leaf_0_script(),
+            1 => self.generate_taproot_leaf_1_script(),
             _ => panic!("Invalid leaf index."),
         }
     }
@@ -44,15 +90,18 @@ impl TaprootConnector for ConnectorC {
     fn generate_taproot_leaf_tx_in(&self, leaf_index: u32, input: &Input) -> TxIn {
         match leaf_index {
             0 => self.generate_taproot_leaf_0_tx_in(input),
+            1 => self.generate_taproot_leaf_1_tx_in(input),
             _ => panic!("Invalid leaf index."),
         }
     }
 
     fn generate_taproot_spend_info(&self) -> TaprootSpendInfo {
         TaprootBuilder::new()
-            .add_leaf(0, self.generate_taproot_leaf_0_script())
+            .add_leaf(1, self.generate_taproot_leaf_0_script())
             .expect("Unable to add leaf 0")
-            .finalize(SECP256K1, self.operator_taproot_public_key)
+            .add_leaf(1, self.generate_taproot_leaf_1_script())
+            .expect("Unable to add leaf 1")
+            .finalize(SECP256K1, self.n_of_n_taproot_public_key)
             .expect("Unable to finalize taproot")
     }
 

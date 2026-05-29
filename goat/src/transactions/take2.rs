@@ -12,10 +12,10 @@ use crate::{
 use super::{
     super::{
         connectors::{
-            base::*, connector_0::Connector0, connector_d::ConnectorD, connector_e::ConnectorE,
-            connector_f::ConnectorF, kickoff_connectors::GuardianConnector,
+            base::*, connector_0::Connector0, connector_d::ConnectorD,
+            kickoff_connectors::GuardianConnector,
         },
-        contexts::{operator::OperatorContext, verifier::VerifierContext},
+        contexts::{committee::CommitteeContext, operator::OperatorContext},
         error::{Error, TransactionError::InsufficientInputAmount},
         scripts::*,
         transactions::signing_musig2::generate_taproot_partial_signature,
@@ -56,14 +56,10 @@ impl Take2Transaction {
     pub fn new_for_validation(
         connector_0: &Connector0,
         connector_d: &ConnectorD,
-        connector_e: &ConnectorE,
-        connector_f: &ConnectorF,
         guardian_connector: &GuardianConnector,
         input_0: Input,
         input_1: Input,
         input_2: Input,
-        input_3: Input,
-        input_4: Input,
         operator_address: &Address,
     ) -> Result<Self, Error> {
         let input_0_leaf = 0;
@@ -72,16 +68,10 @@ impl Take2Transaction {
         let input_1_leaf = 0;
         let _input_1 = connector_d.generate_taproot_leaf_tx_in(input_1_leaf, &input_1);
 
-        let _input_2 = generate_default_tx_in(&input_2);
+        let input_2_leaf = 0;
+        let _input_2 = guardian_connector.generate_taproot_leaf_tx_in(input_2_leaf, &input_2);
 
-        let input_3_leaf = 0;
-        let _input_3 = connector_f.generate_taproot_leaf_tx_in(input_3_leaf, &input_3);
-
-        let input_4_leaf = 0;
-        let _input_4 = guardian_connector.generate_taproot_leaf_tx_in(input_4_leaf, &input_4);
-
-        let total_input_amount =
-            input_0.amount + input_1.amount + input_2.amount + input_3.amount + input_4.amount;
+        let total_input_amount = input_0.amount + input_1.amount + input_2.amount;
 
         if total_input_amount < (Amount::from_sat(MIN_RELAY_FEE_TAKE_2 + 2 * DUST_AMOUNT)) {
             return Err(Error::Transaction(InsufficientInputAmount));
@@ -100,7 +90,7 @@ impl Take2Transaction {
             tx: Transaction {
                 version: bitcoin::transaction::Version(2),
                 lock_time: absolute::LockTime::ZERO,
-                input: vec![_input_0, _input_1, _input_2, _input_3, _input_4],
+                input: vec![_input_0, _input_1, _input_2],
                 output: vec![output_0, output_1],
             },
             prev_outs: vec![
@@ -114,14 +104,6 @@ impl Take2Transaction {
                 },
                 TxOut {
                     value: input_2.amount,
-                    script_pubkey: connector_e.generate_taproot_address().script_pubkey(),
-                },
-                TxOut {
-                    value: input_3.amount,
-                    script_pubkey: connector_f.generate_taproot_address().script_pubkey(),
-                },
-                TxOut {
-                    value: input_4.amount,
                     script_pubkey: guardian_connector
                         .generate_taproot_address()
                         .script_pubkey(),
@@ -130,23 +112,21 @@ impl Take2Transaction {
             prev_scripts: vec![
                 connector_0.generate_taproot_leaf_script(input_0_leaf),
                 connector_d.generate_taproot_leaf_script(input_1_leaf),
-                ScriptBuf::default(), // No `input_2` script - key spend path is used
-                connector_f.generate_taproot_leaf_script(input_3_leaf),
-                guardian_connector.generate_taproot_leaf_script(input_4_leaf),
+                guardian_connector.generate_taproot_leaf_script(input_2_leaf),
             ],
         })
     }
 
     fn sign_input_0_musig2(
         &mut self,
-        context: &VerifierContext,
+        context: &CommitteeContext,
         sec_nonce: &SecNonce,
         agg_nonce: &AggNonce,
     ) -> Result<PartialSignature, SigningError> {
         let input_index = 0;
         let sighash_type = TapSighashType::All;
         generate_taproot_partial_signature(
-            &context,
+            context,
             self.tx(),
             sec_nonce,
             agg_nonce,
@@ -182,7 +162,7 @@ impl Take2Transaction {
 
     pub fn pre_sign(
         &mut self,
-        context: &VerifierContext,
+        context: &CommitteeContext,
         sec_nonces: &[SecNonce; 1],
         agg_nonces: &[AggNonce; 1],
     ) -> Result<[PartialSignature; 1], SigningError> {
@@ -229,7 +209,7 @@ impl Take2Transaction {
         connector_0: &Connector0,
         pre_sigs: [bitcoin::taproot::Signature; 1],
     ) {
-        self.push_input_0_signature(connector_0, pre_sigs[0].clone());
+        self.push_input_0_signature(connector_0, pre_sigs[0]);
     }
 
     pub fn sign_input_1(&mut self, context: &OperatorContext, connector_d: &ConnectorD) {
@@ -243,38 +223,12 @@ impl Take2Transaction {
         );
     }
 
-    pub fn sign_input_2(&mut self, context: &OperatorContext, connector_e: &ConnectorE) {
-        let input_index = 2;
-        let prev_outs = &self.prev_outs().clone();
-        let merkle_root = connector_e.taproot_merkle_root;
-
-        populate_p2tr_key_spend_witness(
-            self.tx_mut(),
-            input_index,
-            prev_outs,
-            TapSighashType::All,
-            merkle_root,
-            &context.operator_keypair,
-        );
-    }
-
-    pub fn sign_input_3(&mut self, context: &OperatorContext, connector_f: &ConnectorF) {
-        let input_index = 3;
-        pre_sign_taproot_input_default(
-            self,
-            input_index,
-            TapSighashType::All,
-            connector_f.generate_taproot_spend_info(),
-            &vec![&context.operator_keypair],
-        );
-    }
-
-    pub fn sign_input_4(
+    pub fn sign_input_2(
         &mut self,
         context: &OperatorContext,
         guardian_connector: &GuardianConnector,
     ) {
-        let input_index = 4;
+        let input_index = 2;
         pre_sign_taproot_input_default(
             self,
             input_index,

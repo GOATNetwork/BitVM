@@ -89,6 +89,7 @@ impl PreSignedTransaction for PrekickoffTransaction {
     }
 }
 impl PrekickoffTransaction {
+    #[allow(clippy::too_many_arguments)]
     pub fn new_for_validation(
         prev_prekickoff_connector: &PrekickoffConnector,
         force_skip_connector: &ForceSkipConnector,
@@ -100,7 +101,7 @@ impl PrekickoffTransaction {
         // replenish_fee_prev_scripts: Vec<ScriptBuf>,
         fee_amount: u64,
         watchtower_num: usize,
-        assert_commit_num: usize,
+        verifier_num: usize,
     ) -> Result<Self, Error> {
         let mut input_amounts = vec![input_0.amount];
         let replenish_fee_input_amounts: Vec<Amount> = replenish_fee_inputs
@@ -126,7 +127,7 @@ impl PrekickoffTransaction {
 
         if total_input_amount
             < Amount::from_sat(
-                fee_amount + 3 * DUST_AMOUNT + max_pegout_cost(watchtower_num, assert_commit_num),
+                fee_amount + 3 * DUST_AMOUNT + max_pegout_cost(watchtower_num, verifier_num),
             )
         {
             return Err(Error::Transaction(InsufficientInputAmount));
@@ -140,7 +141,7 @@ impl PrekickoffTransaction {
                 .script_pubkey(),
         };
         let output_1 = TxOut {
-            value: Amount::from_sat(max_pegout_cost(watchtower_num, assert_commit_num)),
+            value: Amount::from_sat(max_pegout_cost(watchtower_num, verifier_num)),
             script_pubkey: kickoff_connector.generate_taproot_address().script_pubkey(),
         };
         let output_3 = p2a_output();
@@ -189,6 +190,22 @@ impl PrekickoffTransaction {
             prev_prekickoff_connector.generate_taproot_spend_info(),
             &vec![&context.operator_keypair],
         );
+    }
+
+    pub fn force_skip_connector_input(&self) -> Result<Input, Error> {
+        tx_output_input(&self.tx, output_topology::prekickoff::FORCE_SKIP_CONNECTOR)
+    }
+
+    pub fn kickoff_connector_input(&self) -> Result<Input, Error> {
+        tx_output_input(&self.tx, output_topology::prekickoff::KICKOFF_CONNECTOR)
+    }
+
+    pub fn prekickoff_connector_input(&self) -> Result<Input, Error> {
+        tx_output_input(&self.tx, output_topology::prekickoff::PREKICKOFF_CONNECTOR)
+    }
+
+    pub fn anchor_input(&self) -> Result<Input, Error> {
+        tx_output_input(&self.tx, output_topology::prekickoff::ANCHOR)
     }
 }
 impl BaseTransaction for PrekickoffTransaction {
@@ -289,7 +306,7 @@ impl ForceSkipKickoffTransaction {
         context: &OperatorContext,
         kickoff_connector: &KickoffConnector,
     ) {
-        let input_index = 1;
+        let input_index = 0;
         pre_sign_taproot_input_default(
             self,
             input_index,
@@ -424,7 +441,7 @@ impl QuickChallengeTransaction {
         context: &OperatorContext,
         guardian_connector: &GuardianConnector,
     ) {
-        let input_index = 1;
+        let input_index = 0;
         pre_sign_taproot_input_default(
             self,
             input_index,
@@ -559,7 +576,7 @@ impl ChallengeIncompleteKickoffTransaction {
         context: &OperatorContext,
         guardian_connector: &GuardianConnector,
     ) {
-        let input_index = 1;
+        let input_index = 0;
         pre_sign_taproot_input_default(
             self,
             input_index,

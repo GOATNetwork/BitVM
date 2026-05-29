@@ -12,7 +12,7 @@ use musig2::{
 use std::collections::HashMap;
 
 use super::{
-    super::contexts::{base::BaseContext, verifier::VerifierContext},
+    super::contexts::{base::BaseContext, committee::CommitteeContext},
     super::error::Error,
     pre_signed::PreSignedTransaction,
     signing::push_taproot_leaf_script_and_control_block_to_witness,
@@ -64,14 +64,14 @@ pub trait PreSignedMusig2Transaction: PreSignedTransaction {
         })
     }
 
-    fn push_nonces(&mut self, context: &VerifierContext) -> HashMap<usize, SecNonce> {
+    fn push_nonces(&mut self, context: &CommitteeContext) -> HashMap<usize, SecNonce> {
         self.verifier_inputs()
             .iter()
             .map(|input_index| (*input_index, self.push_nonce(context, *input_index)))
             .collect()
     }
 
-    fn push_nonce(&mut self, context: &VerifierContext, input_index: usize) -> SecNonce {
+    fn push_nonce(&mut self, context: &CommitteeContext, input_index: usize) -> SecNonce {
         // Push nonce
         let musig2_nonces = self.musig2_nonces_mut();
         if musig2_nonces.get(&input_index).is_none() {
@@ -82,7 +82,7 @@ pub trait PreSignedMusig2Transaction: PreSignedTransaction {
         musig2_nonces
             .get_mut(&input_index)
             .unwrap()
-            .insert(context.verifier_public_key, secret_nonce.public_nonce());
+            .insert(context.committee_public_key, secret_nonce.public_nonce());
 
         // Sign the nonce and push the signature
         let musig2_nonce_signatures = self.musig2_nonce_signatures_mut();
@@ -91,13 +91,13 @@ pub trait PreSignedMusig2Transaction: PreSignedTransaction {
         }
 
         let nonce_signature = context
-            .verifier_keypair
+            .committee_keypair
             .sign_schnorr(get_nonce_message(&secret_nonce.public_nonce()));
 
         musig2_nonce_signatures
             .get_mut(&input_index)
             .unwrap()
-            .insert(context.verifier_public_key, nonce_signature);
+            .insert(context.committee_public_key, nonce_signature);
 
         secret_nonce
     }
@@ -140,7 +140,7 @@ pub trait PreSignedMusig2Transaction: PreSignedTransaction {
             musig2_nonce_signatures
                 .get_mut(&index)
                 .unwrap()
-                .insert(*verifier_pubkey, nonce_signature.clone());
+                .insert(*verifier_pubkey, *nonce_signature);
         }
         None
     }
@@ -194,7 +194,7 @@ pub fn verify_public_nonce(sig: &Signature, nonce: &PubNonce, pubkey: &XOnlyPubl
 
 pub fn pre_sign_musig2_taproot_input<T: PreSignedTransaction + PreSignedMusig2Transaction>(
     tx: &mut T,
-    context: &VerifierContext,
+    context: &CommitteeContext,
     input_index: usize,
     sighash_type: TapSighashType,
     secret_nonce: &SecNonce,
@@ -224,7 +224,7 @@ pub fn pre_sign_musig2_taproot_input<T: PreSignedTransaction + PreSignedMusig2Tr
     musig2_signatures
         .get_mut(&input_index)
         .unwrap()
-        .insert(context.verifier_public_key, partial_signature);
+        .insert(context.committee_public_key, partial_signature);
 }
 
 pub fn finalize_musig2_taproot_input<T: PreSignedTransaction + PreSignedMusig2Transaction>(
