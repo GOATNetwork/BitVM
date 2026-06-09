@@ -25,9 +25,15 @@ pub const MIN_RELAY_FEE_TAKE_2: u64 = relay_fee(500);
 pub const MIN_RELAY_FEE_VERIFIER_ASSERT: u64 = relay_fee(60000);
 pub const MIN_RELAY_FEE_WRONGLY_CHALLENGED: u64 = relay_fee(1500);
 pub const MIN_RELAY_FEE_DISPROVE: u64 = relay_fee(800);
+pub const MIN_RELAY_FEE_PUBIN_DISPROVE: u64 = relay_fee(800);
+pub const MIN_RELAY_FEE_WATCHTOWER_CHALLENGE_TIMEOUT: u64 = relay_fee(500);
+pub const MIN_RELAY_FEE_OPERATOR_CHALLENGE_ACK: u64 = relay_fee(500);
+pub const MIN_RELAY_FEE_OPERATOR_CHALLENGE_NACK: u64 = relay_fee(800);
+pub const MIN_RELAY_FEE_OPERATOR_COMMIT_PUBIN: u64 = relay_fee(500);
+pub const MIN_RELAY_FEE_OPERATOR_COMMIT_TIMEOUT: u64 = relay_fee(800);
 pub const P2A_AMOUNT: u64 = 240;
 pub const fn min_relay_fee_watchtower_challenge_init(watchtower_num: usize) -> u64 {
-    relay_fee(watchtower_num * 100 + 200)
+    relay_fee(watchtower_num * 200 + 400)
 }
 pub const fn min_relay_fee_operator_assert(num_verifier: usize) -> u64 {
     relay_fee(num_verifier * 100 + 15000)
@@ -43,6 +49,9 @@ pub const fn verifier_assert_input_amount() -> u64 {
 }
 pub const fn disprove_input_amount() -> u64 {
     MIN_RELAY_FEE_DISPROVE + P2A_AMOUNT
+}
+pub const fn pubin_disprove_input_amount() -> u64 {
+    MIN_RELAY_FEE_PUBIN_DISPROVE + P2A_AMOUNT
 }
 pub const fn connector_d_assert_output_amount() -> u64 {
     if disprove_input_amount() > verifier_assert_prover_output_amount() {
@@ -65,7 +74,7 @@ pub const fn max_assert_cost(num_verifier: usize) -> u64 {
 }
 pub const fn max_watchtower_challenge_cost(num_watchtowers: usize) -> u64 {
     min_relay_fee_watchtower_challenge_init(num_watchtowers)
-        + num_watchtowers as u64 * DUST_AMOUNT
+        + (num_watchtowers as u64 * 2 + 2) * DUST_AMOUNT
         + P2A_AMOUNT
 }
 pub const fn max_pegout_cost(num_watchtowers: usize, num_verifier: usize) -> u64 {
@@ -124,14 +133,26 @@ pub mod output_topology {
     }
 
     pub mod watchtower_challenge_init {
-        pub const WATCHTOWER_CONNECTOR_START: usize = 0;
+        pub const WATCHTOWER_CONNECTOR_PAIR_START: usize = 0;
 
         pub const fn watchtower_connector(index: usize) -> usize {
-            WATCHTOWER_CONNECTOR_START + index
+            WATCHTOWER_CONNECTOR_PAIR_START + index * 2
+        }
+
+        pub const fn ack_connector(index: usize) -> usize {
+            WATCHTOWER_CONNECTOR_PAIR_START + index * 2 + 1
+        }
+
+        pub const fn connector_e(watchtower_num: usize) -> usize {
+            WATCHTOWER_CONNECTOR_PAIR_START + watchtower_num * 2
+        }
+
+        pub const fn connector_f(watchtower_num: usize) -> usize {
+            connector_e(watchtower_num) + 1
         }
 
         pub const fn anchor(watchtower_num: usize) -> usize {
-            WATCHTOWER_CONNECTOR_START + watchtower_num
+            connector_f(watchtower_num) + 1
         }
     }
 

@@ -2,10 +2,15 @@ use crate::wots::{Wots, Wots64, Wots96};
 use bitvm::{signatures::WinternitzSecret, treepp::*};
 use serde::{Deserialize, Serialize};
 
-pub const INPUT_WIRE_NUM: usize = 512;
-pub const PROVER_SIG_LEN: usize = 2 * Wots64::TOTAL_DIGIT_LEN as usize;
+pub const INPUT_WIRE_NUM: usize = 768;
+pub const PROVER_SIG_LEN: usize = 2 * Wots96::TOTAL_DIGIT_LEN as usize;
 pub type OperatorAssertSecretKey = WinternitzSecret;
-pub type OperatorAssertPublicKey = <Wots64 as Wots>::PublicKey;
+pub type OperatorAssertPublicKey = <Wots96 as Wots>::PublicKey;
+pub type OperatorCommitPubinSecretKey = WinternitzSecret;
+pub type OperatorCommitPubinPublicKey = <Wots96 as Wots>::PublicKey;
+pub const OPERATOR_ASSERT_PI1_X_INDEX: usize = 0;
+pub const OPERATOR_ASSERT_PI1_Y_INDEX: usize = 1;
+pub const OPERATOR_ASSERT_X_D_INDEX: usize = 2;
 
 pub type Label = Vec<u8>;
 pub type LabelHash = [u8; 20];
@@ -97,7 +102,7 @@ pub fn verify_prover_assert_script_768_wire(
 
 pub fn verify_verifier_assert_script_768_wire(
     prover_wots_pubkey: &<Wots96 as Wots>::PublicKey,
-    label_hashes: [WireHash; 768],
+    label_hashes: &[WireHash; 768],
 ) -> Script {
     script! {
         for byte_hashes in label_hashes.chunks(8).rev() {
@@ -263,7 +268,7 @@ mod tests {
             for wire_index in 0..768 {
                 { selected_labels[wire_index].clone() }
             }
-            { verify_verifier_assert_script_768_wire(&public_key, label_hashes) }
+            { verify_verifier_assert_script_768_wire(&public_key, &label_hashes) }
         };
         println!("verifier assert full script size: {}", s.len());
         let result = execute_script(s);

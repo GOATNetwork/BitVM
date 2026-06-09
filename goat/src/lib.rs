@@ -5,6 +5,7 @@ pub mod constants;
 pub mod contexts;
 pub mod error;
 pub mod proof;
+pub mod pubin_disprove_scripts;
 pub mod scripts;
 pub mod serialization;
 pub mod transactions;

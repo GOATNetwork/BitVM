@@ -1,4 +1,12 @@
-use crate::{assert_scripts::*, utils::remove_script_and_control_block_from_witness};
+use crate::{
+    assert_scripts::{
+        verify_prover_assert_script_768_wire, OperatorCommitPubinPublicKey,
+        OperatorCommitPubinSecretKey, PROVER_SIG_LEN,
+    },
+    constants::OPERATOR_COMMIT_TIMELOCK,
+    utils::{num_blocks_per_network, remove_script_and_control_block_from_witness},
+    wots::*,
+};
 use bitcoin::{
     taproot::{TaprootBuilder, TaprootSpendInfo},
     Address, Network, ScriptBuf, TxIn, XOnlyPublicKey,
@@ -9,33 +17,38 @@ use serde::{Deserialize, Serialize};
 use serde_big_array::BigArray;
 
 use super::{
-    super::{error::Error, scripts::*, transactions::base::Input, wots::*},
+    super::{error::Error, scripts::*, transactions::base::Input},
     base::*,
 };
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Clone)]
-pub struct ConnectorC {
+pub struct ConnectorE {
     pub network: Network,
     pub n_of_n_taproot_public_key: XOnlyPublicKey,
     #[serde(with = "BigArray")]
-    pub operator_wots_public_key: OperatorAssertPublicKey,
+    pub operator_commit_pubin_wots_public_key: OperatorCommitPubinPublicKey,
+    pub operator_commit_blocks_timelock: u32,
 }
 
-impl ConnectorC {
+impl ConnectorE {
     pub fn new(
         network: Network,
         n_of_n_taproot_public_key: &XOnlyPublicKey,
-        operator_wots_public_key: &OperatorAssertPublicKey,
+        operator_commit_pubin_wots_public_key: &OperatorCommitPubinPublicKey,
     ) -> Self {
-        ConnectorC {
+        ConnectorE {
             network,
             n_of_n_taproot_public_key: *n_of_n_taproot_public_key,
-            operator_wots_public_key: *operator_wots_public_key,
+            operator_commit_pubin_wots_public_key: *operator_commit_pubin_wots_public_key,
+            operator_commit_blocks_timelock: num_blocks_per_network(
+                network,
+                OPERATOR_COMMIT_TIMELOCK,
+            ),
         }
     }
 
     fn generate_taproot_leaf_0_script(&self) -> ScriptBuf {
-        generate_pay_to_pubkey_taproot_script(&self.n_of_n_taproot_public_key)
+        verify_prover_assert_script_768_wire(&self.operator_commit_pubin_wots_public_key).compile()
     }
 
     fn generate_taproot_leaf_0_tx_in(&self, input: &Input) -> TxIn {
@@ -43,42 +56,47 @@ impl ConnectorC {
     }
 
     fn generate_taproot_leaf_1_script(&self) -> ScriptBuf {
-        verify_prover_assert_script_768_wire(&self.operator_wots_public_key).compile()
+        generate_timelock_taproot_script(
+            &self.n_of_n_taproot_public_key,
+            self.operator_commit_blocks_timelock,
+        )
     }
 
     fn generate_taproot_leaf_1_tx_in(&self, input: &Input) -> TxIn {
-        generate_default_tx_in(input)
+        generate_timelock_tx_in(input, self.operator_commit_blocks_timelock)
     }
 
-    pub fn generate_leaf_1_unlock_data(
+    pub fn generate_leaf_0_unlock_data(
         &self,
-        sk: &OperatorAssertSecretKey,
-        proof: &[u8; 96],
+        sk: &OperatorCommitPubinSecretKey,
+        pubin_commitment: &[u8; 96],
     ) -> Result<Vec<Vec<u8>>, Error> {
-        let witness = Wots96::sign_to_raw_witness(sk, proof);
+        let witness = Wots96::sign_to_raw_witness(sk, pubin_commitment);
         let witness_script = script! {
             { witness.clone() }
         };
-        let verification_script = witness_script.push_script(self.generate_taproot_leaf_1_script());
+        let verification_script = witness_script.push_script(self.generate_taproot_leaf_0_script());
         let exec_result = execute_script(verification_script);
         match exec_result.success {
             true => Ok(witness.to_vec()),
-            false => Err(Error::Other("Invalid WOTS secret-key for Connector-C.")),
+            false => Err(Error::Other(
+                "Invalid operator-commit-pubin WOTS secret-key for Connector-E.",
+            )),
         }
     }
 
-    pub fn extract_leaf_1_raw_witness(&self, txin: &TxIn) -> Result<RawWitness, Error> {
+    pub fn extract_leaf_0_raw_witness(&self, txin: &TxIn) -> Result<RawWitness, Error> {
         let witness = txin.witness.to_vec();
         if witness.len() != PROVER_SIG_LEN + 2 {
             return Err(Error::Other(
-                "Invalid witness length for Connector-C leaf 1.",
+                "Invalid witness length for Connector-E leaf 0.",
             ));
         }
         Ok(remove_script_and_control_block_from_witness(witness))
     }
 }
 
-impl TaprootConnector for ConnectorC {
+impl TaprootConnector for ConnectorE {
     fn generate_taproot_leaf_script(&self, leaf_index: u32) -> ScriptBuf {
         match leaf_index {
             0 => self.generate_taproot_leaf_0_script(),

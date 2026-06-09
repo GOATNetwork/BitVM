@@ -1,20 +1,30 @@
 use std::vec;
 
-use bitcoin::{absolute, consensus, Amount, ScriptBuf, TapSighashType, Transaction, TxIn, TxOut};
-use bitvm::{chunk::api::type_conversion_utils::RawWitness, treepp::*};
+use bitcoin::{
+    absolute, consensus,
+    taproot::{LeafVersion, TaprootSpendInfo},
+    Amount, ScriptBuf, TapSighashType, Transaction, TxIn, TxOut,
+};
+use bitvm::{
+    chunk::api::type_conversion_utils::RawWitness, execute_script_without_stack_limit, treepp::*,
+};
 use musig2::{errors::SigningError, AggNonce, PartialSignature, SecNonce};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    assert_scripts::{Label, OperatorAssertSecretKey, INPUT_WIRE_NUM},
+    assert_scripts::{
+        Label, LabelHash, OperatorAssertPublicKey, OperatorAssertSecretKey,
+        OperatorCommitPubinPublicKey, INPUT_WIRE_NUM,
+    },
     connectors::{
         assert_connectors::{ProverConnector, VerifierConnector},
-        base::TaprootConnector,
+        base::{generate_default_tx_in, TaprootConnector},
         connector_c::ConnectorC,
         connector_d::ConnectorD,
     },
     contexts::{base::BaseContext, committee::CommitteeContext},
     error::{Error, TransactionError::InsufficientInputAmount},
+    pubin_disprove_scripts::verify_guest_pubin_commitment,
     scripts::p2a_output,
     transactions::{
         base::*,
@@ -113,7 +123,7 @@ impl OperatorAssertTransaction {
         &mut self,
         wots_sk: &OperatorAssertSecretKey,
         connector_c: &ConnectorC,
-        proof: &[u8; 64],
+        proof: &[u8; 96],
     ) -> Result<(), Error> {
         let input_index = 0;
         let leaf_index = 1;
@@ -508,6 +518,67 @@ impl BaseTransaction for DisproveTransaction {
     fn name(&self) -> &'static str {
         "Disprove"
     }
+}
+
+pub fn pubin_disprove_script(
+    guest_pubin_wots_pubkey: &OperatorCommitPubinPublicKey,
+    operator_assert_wots_pubkey: &OperatorAssertPublicKey,
+    constant_value: &[u8; 32],
+    watchtower_hashelocks: &Vec<LabelHash>,
+) -> Script {
+    verify_guest_pubin_commitment(
+        guest_pubin_wots_pubkey,
+        operator_assert_wots_pubkey,
+        constant_value,
+        watchtower_hashelocks,
+    )
+}
+
+pub fn validate_pubin(
+    operator_commit_pubin_witness: RawWitness,
+    operator_assert_witness: RawWitness,
+    ack_preimages: Vec<Vec<u8>>,
+    input_lock_script: ScriptBuf,
+) -> Option<(RawWitness, ScriptBuf)> {
+    let mut unlock_data = operator_assert_witness;
+    unlock_data.extend(ack_preimages);
+    unlock_data.extend(operator_commit_pubin_witness);
+
+    let witness_script = script! {
+        { unlock_data.clone() }
+    };
+    let verification_script = witness_script.push_script(input_lock_script.clone());
+    let exec_result = execute_script_without_stack_limit(verification_script);
+    if exec_result.success {
+        Some((unlock_data, input_lock_script))
+    } else {
+        None
+    }
+}
+
+pub fn pubin_disprove(
+    connector_e_taproot_spend_info: &TaprootSpendInfo,
+    connector_e_input: &Input,
+    input_script_witness: RawWitness,
+    input_lock_script: ScriptBuf,
+) -> Result<TxIn, Error> {
+    let mut txin = generate_default_tx_in(connector_e_input);
+    input_script_witness
+        .into_iter()
+        .for_each(|witness_item| txin.witness.push(witness_item));
+
+    let prevout_leaf = (input_lock_script, LeafVersion::TapScript);
+    let control_block = match connector_e_taproot_spend_info.control_block(&prevout_leaf) {
+        Some(control_block) => control_block,
+        None => {
+            return Err(Error::Other(
+                "Unable to generate control block for pubin-disprove txin.",
+            ))
+        }
+    };
+    txin.witness.push(prevout_leaf.0.to_bytes());
+    txin.witness.push(control_block.serialize());
+    Ok(txin)
 }
 
 pub fn wrongly_challenged(

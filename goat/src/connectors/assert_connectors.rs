@@ -41,7 +41,7 @@ impl VerifierConnector {
     }
 
     fn generate_taproot_leaf_0_script(&self) -> ScriptBuf {
-        verify_verifier_assert_script_512_wire(&self.operator_wots_public_key, &self.label_hashes)
+        verify_verifier_assert_script_768_wire(&self.operator_wots_public_key, &self.label_hashes)
             .compile()
     }
 
