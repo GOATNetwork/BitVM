@@ -143,7 +143,7 @@ impl OperatorAssertTransaction {
     }
 
     pub fn verifier_connector_input(&self, index: usize) -> Result<Input, Error> {
-        let verifier_num = self.tx.output.len().saturating_sub(2);
+        let verifier_num = output_topology::operator_assert::verifier_num(self.tx.output.len());
         if index >= verifier_num {
             return Err(Error::Other("verifier connector index out of bounds"));
         }
@@ -155,7 +155,7 @@ impl OperatorAssertTransaction {
     }
 
     pub fn connector_d_input(&self) -> Result<Input, Error> {
-        let verifier_num = self.tx.output.len().saturating_sub(2);
+        let verifier_num = output_topology::operator_assert::verifier_num(self.tx.output.len());
         tx_output_input(
             &self.tx,
             output_topology::operator_assert::connector_d(verifier_num),
@@ -163,7 +163,7 @@ impl OperatorAssertTransaction {
     }
 
     pub fn anchor_input(&self) -> Result<Input, Error> {
-        let verifier_num = self.tx.output.len().saturating_sub(2);
+        let verifier_num = output_topology::operator_assert::verifier_num(self.tx.output.len());
         tx_output_input(
             &self.tx,
             output_topology::operator_assert::anchor(verifier_num),
@@ -262,6 +262,17 @@ impl VerifierAssertTransaction {
             wit,
         );
         Ok(())
+    }
+
+    pub fn prover_connector_input(&self) -> Result<Input, Error> {
+        tx_output_input(
+            &self.tx,
+            output_topology::verifier_assert::prover_connector(),
+        )
+    }
+
+    pub fn anchor_input(&self) -> Result<Input, Error> {
+        tx_output_input(&self.tx, output_topology::verifier_assert::anchor())
     }
 }
 

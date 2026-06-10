@@ -267,7 +267,8 @@ impl WatchtowerChallengeInitTransaction {
     }
 
     pub fn watchtower_connector_input(&self, index: usize) -> Result<Input, Error> {
-        let watchtower_num = self.tx.output.len().saturating_sub(3) / 2;
+        let watchtower_num =
+            output_topology::watchtower_challenge_init::watchtower_num(self.tx.output.len());
         if index >= watchtower_num {
             return Err(Error::Other("watchtower connector index out of bounds"));
         }
@@ -278,7 +279,8 @@ impl WatchtowerChallengeInitTransaction {
     }
 
     pub fn ack_connector_input(&self, index: usize) -> Result<Input, Error> {
-        let watchtower_num = self.tx.output.len().saturating_sub(3) / 2;
+        let watchtower_num =
+            output_topology::watchtower_challenge_init::watchtower_num(self.tx.output.len());
         if index >= watchtower_num {
             return Err(Error::Other("ACK connector index out of bounds"));
         }
@@ -289,7 +291,8 @@ impl WatchtowerChallengeInitTransaction {
     }
 
     pub fn connector_e_input(&self) -> Result<Input, Error> {
-        let watchtower_num = self.tx.output.len().saturating_sub(3) / 2;
+        let watchtower_num =
+            output_topology::watchtower_challenge_init::watchtower_num(self.tx.output.len());
         tx_output_input(
             &self.tx,
             output_topology::watchtower_challenge_init::connector_e(watchtower_num),
@@ -297,7 +300,8 @@ impl WatchtowerChallengeInitTransaction {
     }
 
     pub fn connector_f_input(&self) -> Result<Input, Error> {
-        let watchtower_num = self.tx.output.len().saturating_sub(3) / 2;
+        let watchtower_num =
+            output_topology::watchtower_challenge_init::watchtower_num(self.tx.output.len());
         tx_output_input(
             &self.tx,
             output_topology::watchtower_challenge_init::connector_f(watchtower_num),
@@ -305,7 +309,8 @@ impl WatchtowerChallengeInitTransaction {
     }
 
     pub fn anchor_input(&self) -> Result<Input, Error> {
-        let watchtower_num = self.tx.output.len().saturating_sub(3) / 2;
+        let watchtower_num =
+            output_topology::watchtower_challenge_init::watchtower_num(self.tx.output.len());
         tx_output_input(
             &self.tx,
             output_topology::watchtower_challenge_init::anchor(watchtower_num),

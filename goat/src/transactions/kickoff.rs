@@ -127,23 +127,23 @@ impl KickoffTransaction {
     }
 
     pub fn connector_a_input(&self) -> Result<Input, Error> {
-        tx_output_input(&self.tx, output_topology::kickoff::CONNECTOR_A)
+        tx_output_input(&self.tx, output_topology::kickoff::connector_a())
     }
 
     pub fn connector_b_input(&self) -> Result<Input, Error> {
-        tx_output_input(&self.tx, output_topology::kickoff::CONNECTOR_B)
+        tx_output_input(&self.tx, output_topology::kickoff::connector_b())
     }
 
     pub fn connector_c_input(&self) -> Result<Input, Error> {
-        tx_output_input(&self.tx, output_topology::kickoff::CONNECTOR_C)
+        tx_output_input(&self.tx, output_topology::kickoff::connector_c())
     }
 
     pub fn guardian_connector_input(&self) -> Result<Input, Error> {
-        tx_output_input(&self.tx, output_topology::kickoff::GUARDIAN_CONNECTOR)
+        tx_output_input(&self.tx, output_topology::kickoff::guardian_connector())
     }
 
     pub fn anchor_input(&self) -> Result<Input, Error> {
-        tx_output_input(&self.tx, output_topology::kickoff::ANCHOR)
+        tx_output_input(&self.tx, output_topology::kickoff::anchor())
     }
 }
 impl BaseTransaction for KickoffTransaction {

@@ -123,6 +123,27 @@ pub mod output_topology {
         pub const CONNECTOR_C: usize = 2;
         pub const GUARDIAN_CONNECTOR: usize = 3;
         pub const ANCHOR: usize = 4;
+        pub const OUTPUT_NUM: usize = ANCHOR + 1;
+
+        pub const fn connector_a() -> usize {
+            CONNECTOR_A
+        }
+
+        pub const fn connector_b() -> usize {
+            CONNECTOR_B
+        }
+
+        pub const fn connector_c() -> usize {
+            CONNECTOR_C
+        }
+
+        pub const fn guardian_connector() -> usize {
+            GUARDIAN_CONNECTOR
+        }
+
+        pub const fn anchor() -> usize {
+            ANCHOR
+        }
     }
 
     pub mod prekickoff {
@@ -130,6 +151,67 @@ pub mod output_topology {
         pub const KICKOFF_CONNECTOR: usize = 1;
         pub const PREKICKOFF_CONNECTOR: usize = 2;
         pub const ANCHOR: usize = 3;
+        pub const OUTPUT_NUM: usize = ANCHOR + 1;
+
+        pub const fn force_skip_connector() -> usize {
+            FORCE_SKIP_CONNECTOR
+        }
+
+        pub const fn kickoff_connector() -> usize {
+            KICKOFF_CONNECTOR
+        }
+
+        pub const fn prekickoff_connector() -> usize {
+            PREKICKOFF_CONNECTOR
+        }
+
+        pub const fn anchor() -> usize {
+            ANCHOR
+        }
+    }
+
+    pub mod pegin_deposit {
+        pub const CONNECTOR_Z: usize = 0;
+        pub const CHANGE: usize = 1;
+
+        pub const fn connector_z() -> usize {
+            CONNECTOR_Z
+        }
+
+        pub const fn change() -> usize {
+            CHANGE
+        }
+
+        pub const fn output_num(has_change: bool) -> usize {
+            if has_change {
+                CHANGE + 1
+            } else {
+                CONNECTOR_Z + 1
+            }
+        }
+    }
+
+    pub mod pegin_refund {
+        pub const REFUND: usize = 0;
+        pub const OUTPUT_NUM: usize = REFUND + 1;
+
+        pub const fn refund() -> usize {
+            REFUND
+        }
+    }
+
+    pub mod pegin_confirm {
+        pub const CONNECTOR_0: usize = 0;
+        pub const OP_RETURN: usize = 1;
+        pub const OUTPUT_NUM: usize = OP_RETURN + 1;
+
+        pub const fn connector_0() -> usize {
+            CONNECTOR_0
+        }
+
+        pub const fn op_return() -> usize {
+            OP_RETURN
+        }
     }
 
     pub mod watchtower_challenge_init {
@@ -154,6 +236,18 @@ pub mod output_topology {
         pub const fn anchor(watchtower_num: usize) -> usize {
             connector_f(watchtower_num) + 1
         }
+
+        pub const fn output_num(watchtower_num: usize) -> usize {
+            anchor(watchtower_num) + 1
+        }
+
+        pub const fn watchtower_num(output_num: usize) -> usize {
+            if output_num < 3 {
+                0
+            } else {
+                (output_num - 3) / 2
+            }
+        }
     }
 
     pub mod operator_assert {
@@ -169,6 +263,32 @@ pub mod output_topology {
 
         pub const fn anchor(verifier_num: usize) -> usize {
             connector_d(verifier_num) + 1
+        }
+
+        pub const fn output_num(verifier_num: usize) -> usize {
+            anchor(verifier_num) + 1
+        }
+
+        pub const fn verifier_num(output_num: usize) -> usize {
+            if output_num < 2 {
+                0
+            } else {
+                output_num - 2
+            }
+        }
+    }
+
+    pub mod verifier_assert {
+        pub const PROVER_CONNECTOR: usize = 0;
+        pub const ANCHOR: usize = 1;
+        pub const OUTPUT_NUM: usize = ANCHOR + 1;
+
+        pub const fn prover_connector() -> usize {
+            PROVER_CONNECTOR
+        }
+
+        pub const fn anchor() -> usize {
+            ANCHOR
         }
     }
 }
@@ -337,7 +457,7 @@ mod tests {
         transactions::{pre_signed_musig2::get_nonce_message, signing_musig2::generate_nonce},
     };
 
-    use super::verify_public_nonces;
+    use super::{output_topology, verify_public_nonces};
 
     const DUMMY_TXID: &str = "5df6e0e2761359d30a8275058e299fcc0381534545f55cf43e41983f5d4c9456";
 

@@ -92,6 +92,14 @@ impl PegInDepositTransaction {
     pub fn tx(&self) -> &Transaction {
         &self.tx
     }
+
+    pub fn connector_z_input(&self) -> Result<Input, Error> {
+        tx_output_input(&self.tx, output_topology::pegin_deposit::connector_z())
+    }
+
+    pub fn change_input(&self) -> Result<Input, Error> {
+        tx_output_input(&self.tx, output_topology::pegin_deposit::change())
+    }
 }
 impl BaseTransaction for PegInDepositTransaction {
     fn finalize(&self) -> Transaction {
@@ -194,6 +202,10 @@ impl PegInRefundTransaction {
             script,
             &[signature],
         );
+    }
+
+    pub fn refund_input(&self) -> Result<Input, Error> {
+        tx_output_input(&self.tx, output_topology::pegin_refund::refund())
     }
 }
 impl BaseTransaction for PegInRefundTransaction {
@@ -337,6 +349,14 @@ impl PegInConfirmTransaction {
             &spend_info,
             &script,
         );
+    }
+
+    pub fn connector_0_input(&self) -> Result<Input, Error> {
+        tx_output_input(&self.tx, output_topology::pegin_confirm::connector_0())
+    }
+
+    pub fn op_return_input(&self) -> Result<Input, Error> {
+        tx_output_input(&self.tx, output_topology::pegin_confirm::op_return())
     }
 }
 impl BaseTransaction for PegInConfirmTransaction {

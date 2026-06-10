@@ -193,19 +193,25 @@ impl PrekickoffTransaction {
     }
 
     pub fn force_skip_connector_input(&self) -> Result<Input, Error> {
-        tx_output_input(&self.tx, output_topology::prekickoff::FORCE_SKIP_CONNECTOR)
+        tx_output_input(
+            &self.tx,
+            output_topology::prekickoff::force_skip_connector(),
+        )
     }
 
     pub fn kickoff_connector_input(&self) -> Result<Input, Error> {
-        tx_output_input(&self.tx, output_topology::prekickoff::KICKOFF_CONNECTOR)
+        tx_output_input(&self.tx, output_topology::prekickoff::kickoff_connector())
     }
 
     pub fn prekickoff_connector_input(&self) -> Result<Input, Error> {
-        tx_output_input(&self.tx, output_topology::prekickoff::PREKICKOFF_CONNECTOR)
+        tx_output_input(
+            &self.tx,
+            output_topology::prekickoff::prekickoff_connector(),
+        )
     }
 
     pub fn anchor_input(&self) -> Result<Input, Error> {
-        tx_output_input(&self.tx, output_topology::prekickoff::ANCHOR)
+        tx_output_input(&self.tx, output_topology::prekickoff::anchor())
     }
 }
 impl BaseTransaction for PrekickoffTransaction {
