@@ -1,9 +1,8 @@
 use std::vec;
 
 use bitcoin::{
-    absolute, consensus,
-    taproot::{LeafVersion, TaprootSpendInfo},
-    Amount, ScriptBuf, TapSighashType, Transaction, TxIn, TxOut,
+    absolute, consensus, taproot::LeafVersion, Amount, ScriptBuf, TapSighashType, Transaction,
+    TxIn, TxOut,
 };
 use bitvm::{
     chunk::api::type_conversion_utils::RawWitness, execute_script_without_stack_limit, treepp::*,
@@ -18,9 +17,9 @@ use crate::{
     },
     connectors::{
         assert_connectors::{ProverConnector, VerifierConnector},
-        base::{generate_default_tx_in, TaprootConnector},
+        base::TaprootConnector,
         connector_c::ConnectorC,
-        connector_d::ConnectorD,
+        connector_d::{ConnectorD, CONNECTOR_D_PUBIN_DISPROVE_LEAF_INDEX},
     },
     contexts::{base::BaseContext, committee::CommitteeContext},
     error::{Error, TransactionError::InsufficientInputAmount},
@@ -568,22 +567,27 @@ pub fn validate_pubin(
 }
 
 pub fn pubin_disprove(
-    connector_e_taproot_spend_info: &TaprootSpendInfo,
-    connector_e_input: &Input,
+    connector_d: &ConnectorD,
+    connector_d_input: &Input,
     input_script_witness: RawWitness,
-    input_lock_script: ScriptBuf,
 ) -> Result<TxIn, Error> {
-    let mut txin = generate_default_tx_in(connector_e_input);
+    let input_lock_script =
+        connector_d.generate_taproot_leaf_script(CONNECTOR_D_PUBIN_DISPROVE_LEAF_INDEX);
+    let mut txin = connector_d
+        .generate_taproot_leaf_tx_in(CONNECTOR_D_PUBIN_DISPROVE_LEAF_INDEX, connector_d_input);
     input_script_witness
         .into_iter()
         .for_each(|witness_item| txin.witness.push(witness_item));
 
     let prevout_leaf = (input_lock_script, LeafVersion::TapScript);
-    let control_block = match connector_e_taproot_spend_info.control_block(&prevout_leaf) {
+    let control_block = match connector_d
+        .generate_taproot_spend_info()
+        .control_block(&prevout_leaf)
+    {
         Some(control_block) => control_block,
         None => {
             return Err(Error::Other(
-                "Unable to generate control block for pubin-disprove txin.",
+                "Unable to generate Connector-D control block for pubin-disprove txin.",
             ))
         }
     };

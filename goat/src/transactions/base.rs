@@ -54,14 +54,17 @@ pub const fn pubin_disprove_input_amount() -> u64 {
     MIN_RELAY_FEE_PUBIN_DISPROVE + P2A_AMOUNT
 }
 pub const fn connector_d_assert_output_amount() -> u64 {
-    if disprove_input_amount() > verifier_assert_prover_output_amount() {
-        max(
-            DUST_AMOUNT,
-            disprove_input_amount() - verifier_assert_prover_output_amount(),
-        )
-    } else {
-        DUST_AMOUNT
-    }
+    let disprove_connector_d_amount =
+        if disprove_input_amount() > verifier_assert_prover_output_amount() {
+            disprove_input_amount() - verifier_assert_prover_output_amount()
+        } else {
+            0
+        };
+
+    max(
+        max(DUST_AMOUNT, disprove_connector_d_amount),
+        pubin_disprove_input_amount(),
+    )
 }
 pub const fn operator_assert_input_amount(num_verifier: usize) -> u64 {
     min_relay_fee_operator_assert(num_verifier)
@@ -457,7 +460,7 @@ mod tests {
         transactions::{pre_signed_musig2::get_nonce_message, signing_musig2::generate_nonce},
     };
 
-    use super::{output_topology, verify_public_nonces};
+    use super::verify_public_nonces;
 
     const DUMMY_TXID: &str = "5df6e0e2761359d30a8275058e299fcc0381534545f55cf43e41983f5d4c9456";
 
