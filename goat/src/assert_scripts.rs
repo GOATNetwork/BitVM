@@ -37,12 +37,15 @@ pub fn wrongly_challenged_hashlocks_script(hashlocks: &[LabelHash]) -> Script {
         "wrongly challenged script requires at least one hashlock"
     );
     script! {
-        for hashlock in hashlocks.iter().rev() {
-            { label_hash_script() }
+        { label_hash_script() }
+        { 0 }
+        for hashlock in hashlocks.iter() {
+            OP_OVER
             { hashlock.to_vec() }
-            OP_EQUALVERIFY
+            OP_EQUAL
+            OP_BOOLOR
         }
-        OP_TRUE
+        OP_NIP
     }
 }
 
@@ -202,7 +205,27 @@ mod tests {
     }
 
     #[test]
-    fn test_wrongly_challenged_script_multiple_hashlocks() {
+    fn test_wrongly_challenged_script_accepts_any_hashlock_preimage() {
+        let labels = [
+            b"first preimage".to_vec(),
+            b"second preimage".to_vec(),
+            b"third preimage".to_vec(),
+        ];
+        let hashlocks: Vec<LabelHash> = labels.iter().map(label_hash).collect();
+
+        for label in labels {
+            let s = script! {
+                { label.clone() }
+                { wrongly_challenged_hashlocks_script(&hashlocks) }
+            };
+            let result = execute_script(s);
+            assert!(result.success);
+            assert_eq!(result.final_stack.len(), 1);
+        }
+    }
+
+    #[test]
+    fn test_wrongly_challenged_script_rejects_unknown_preimage() {
         let labels = [
             b"first preimage".to_vec(),
             b"second preimage".to_vec(),
@@ -211,12 +234,11 @@ mod tests {
         let hashlocks: Vec<LabelHash> = labels.iter().map(label_hash).collect();
 
         let s = script! {
-            { labels.to_vec() }
+            { b"unknown preimage".to_vec() }
             { wrongly_challenged_hashlocks_script(&hashlocks) }
         };
         let result = execute_script(s);
-        assert!(result.success);
-        assert_eq!(result.final_stack.len(), 1);
+        assert!(!result.success);
     }
 
     #[test]

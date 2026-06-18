@@ -599,15 +599,10 @@ pub fn pubin_disprove(
 pub fn wrongly_challenged(
     prover_connector: &ProverConnector,
     input_0: &Input,
-    final_msgs: &[Label],
+    final_msg: &Label,
 ) -> Result<TxIn, Error> {
-    if final_msgs.len() != prover_connector.hashlocks.len() {
-        return Err(Error::Other(
-            "Invalid hashlock preimage length for ProverConnector.",
-        ));
-    }
     let leaf_index = 0;
-    let unlock_data = final_msgs.to_vec();
+    let unlock_data = vec![final_msg.clone()];
     let witness_script = script! {
         { unlock_data.clone() }
     };
