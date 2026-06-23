@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 pub const NUM_BLOCKS_PER_HOUR: u32 = 6;
 pub const NUM_BLOCKS_PER_DAY: u32 = NUM_BLOCKS_PER_HOUR * 24;
 pub const NUM_BLOCKS_PER_WEEK: u32 = NUM_BLOCKS_PER_DAY * 7;
@@ -16,7 +18,7 @@ pub const OPERATOR_COMMIT_TIMELOCK: u32 = NUM_BLOCKS_PER_DAY * 3; // operator pu
 pub const CONNECTOR_F_TIMELOCK: u32 = NUM_BLOCKS_PER_DAY * 4; // take-2 watchtower flow timelock
 
 /// Configurable mainnet timelock values that are scaled for the selected bitcoin network.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TimelockConfig {
     pub connector_z: u32,
     pub connector_a: u32,
