@@ -3,7 +3,7 @@ use crate::{
         verify_prover_assert_script_768_wire, OperatorCommitPubinPublicKey,
         OperatorCommitPubinSecretKey, PROVER_SIG_LEN,
     },
-    constants::OPERATOR_COMMIT_TIMELOCK,
+    constants::TimelockConfig,
     utils::{num_blocks_per_network, remove_script_and_control_block_from_witness},
     wots::*,
 };
@@ -36,15 +36,43 @@ impl ConnectorE {
         n_of_n_taproot_public_key: &XOnlyPublicKey,
         operator_commit_pubin_wots_public_key: &OperatorCommitPubinPublicKey,
     ) -> Self {
+        ConnectorE::new_with_timelock_config(
+            network,
+            n_of_n_taproot_public_key,
+            operator_commit_pubin_wots_public_key,
+            &TimelockConfig::default(),
+        )
+    }
+
+    pub fn new_with_timelock(
+        network: Network,
+        n_of_n_taproot_public_key: &XOnlyPublicKey,
+        operator_commit_pubin_wots_public_key: &OperatorCommitPubinPublicKey,
+        operator_commit_blocks_timelock: u32,
+    ) -> Self {
         ConnectorE {
             network,
             n_of_n_taproot_public_key: *n_of_n_taproot_public_key,
             operator_commit_pubin_wots_public_key: *operator_commit_pubin_wots_public_key,
             operator_commit_blocks_timelock: num_blocks_per_network(
                 network,
-                OPERATOR_COMMIT_TIMELOCK,
+                operator_commit_blocks_timelock,
             ),
         }
+    }
+
+    pub fn new_with_timelock_config(
+        network: Network,
+        n_of_n_taproot_public_key: &XOnlyPublicKey,
+        operator_commit_pubin_wots_public_key: &OperatorCommitPubinPublicKey,
+        timelock_config: &TimelockConfig,
+    ) -> Self {
+        ConnectorE::new_with_timelock(
+            network,
+            n_of_n_taproot_public_key,
+            operator_commit_pubin_wots_public_key,
+            timelock_config.operator_commit,
+        )
     }
 
     fn generate_taproot_leaf_0_script(&self) -> ScriptBuf {
