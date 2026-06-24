@@ -1,4 +1,4 @@
-use crate::{assert_scripts::*, constants::TimelockConfig, utils::num_blocks_per_network};
+use crate::{assert_scripts::*, constants::TimelockConfig};
 use bitcoin::{
     taproot::{TaprootBuilder, TaprootSpendInfo},
     Address, Network, ScriptBuf, TxIn, XOnlyPublicKey,
@@ -110,20 +110,7 @@ impl ProverConnector {
         network: Network,
         n_of_n_taproot_public_key: XOnlyPublicKey,
         hashlocks: Vec<LabelHash>,
-    ) -> Self {
-        ProverConnector::new_with_timelock_config(
-            network,
-            n_of_n_taproot_public_key,
-            hashlocks,
-            &TimelockConfig::default(),
-        )
-    }
-
-    pub fn new_with_timelock(
-        network: Network,
-        n_of_n_taproot_public_key: XOnlyPublicKey,
-        hashlocks: Vec<LabelHash>,
-        disprove_blocks_timelock: u32,
+        timelock_config: &TimelockConfig,
     ) -> Self {
         assert!(
             !hashlocks.is_empty(),
@@ -132,23 +119,9 @@ impl ProverConnector {
         ProverConnector {
             network,
             n_of_n_taproot_public_key,
-            disprove_blocks_timelock: num_blocks_per_network(network, disprove_blocks_timelock),
+            disprove_blocks_timelock: timelock_config.prover_connector,
             hashlocks,
         }
-    }
-
-    pub fn new_with_timelock_config(
-        network: Network,
-        n_of_n_taproot_public_key: XOnlyPublicKey,
-        hashlocks: Vec<LabelHash>,
-        timelock_config: &TimelockConfig,
-    ) -> Self {
-        ProverConnector::new_with_timelock(
-            network,
-            n_of_n_taproot_public_key,
-            hashlocks,
-            timelock_config.prover_connector,
-        )
     }
 
     fn generate_taproot_leaf_0_script(&self) -> ScriptBuf {

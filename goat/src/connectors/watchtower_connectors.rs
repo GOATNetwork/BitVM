@@ -6,7 +6,7 @@ use bitvm::{chunk::api::type_conversion_utils::script_to_witness, treepp::*};
 use secp256k1::SECP256K1;
 use serde::{Deserialize, Serialize};
 
-use crate::{assert_scripts::LabelHash, constants::TimelockConfig, utils::num_blocks_per_network};
+use crate::{assert_scripts::LabelHash, constants::TimelockConfig};
 
 use super::{
     super::{error::Error, scripts::*, transactions::base::Input},
@@ -27,44 +27,14 @@ impl WatchtowerChallengeConnector {
         network: Network,
         operator_taproot_public_key: &XOnlyPublicKey,
         watchtower_taproot_public_key: &XOnlyPublicKey,
-    ) -> Self {
-        WatchtowerChallengeConnector::new_with_timelock_config(
-            network,
-            operator_taproot_public_key,
-            watchtower_taproot_public_key,
-            &TimelockConfig::default(),
-        )
-    }
-
-    pub fn new_with_timelock(
-        network: Network,
-        operator_taproot_public_key: &XOnlyPublicKey,
-        watchtower_taproot_public_key: &XOnlyPublicKey,
-        watchtower_challenge_blocks_timelock: u32,
+        timelock_config: &TimelockConfig,
     ) -> Self {
         WatchtowerChallengeConnector {
             network,
             operator_taproot_public_key: *operator_taproot_public_key,
             watchtower_taproot_public_key: *watchtower_taproot_public_key,
-            watchtower_challenge_blocks_timelock: num_blocks_per_network(
-                network,
-                watchtower_challenge_blocks_timelock,
-            ),
+            watchtower_challenge_blocks_timelock: timelock_config.watchtower_challenge,
         }
-    }
-
-    pub fn new_with_timelock_config(
-        network: Network,
-        operator_taproot_public_key: &XOnlyPublicKey,
-        watchtower_taproot_public_key: &XOnlyPublicKey,
-        timelock_config: &TimelockConfig,
-    ) -> Self {
-        WatchtowerChallengeConnector::new_with_timelock(
-            network,
-            operator_taproot_public_key,
-            watchtower_taproot_public_key,
-            timelock_config.watchtower_challenge,
-        )
     }
 
     fn generate_taproot_leaf_0_script(&self) -> ScriptBuf {
@@ -136,41 +106,14 @@ impl AckConnector {
         network: Network,
         n_of_n_taproot_public_key: &XOnlyPublicKey,
         hashlock: LabelHash,
-    ) -> Self {
-        AckConnector::new_with_timelock_config(
-            network,
-            n_of_n_taproot_public_key,
-            hashlock,
-            &TimelockConfig::default(),
-        )
-    }
-
-    pub fn new_with_timelock(
-        network: Network,
-        n_of_n_taproot_public_key: &XOnlyPublicKey,
-        hashlock: LabelHash,
-        ack_blocks_timelock: u32,
+        timelock_config: &TimelockConfig,
     ) -> Self {
         AckConnector {
             network,
             n_of_n_taproot_public_key: *n_of_n_taproot_public_key,
-            ack_blocks_timelock: num_blocks_per_network(network, ack_blocks_timelock),
+            ack_blocks_timelock: timelock_config.operator_ack,
             hashlock,
         }
-    }
-
-    pub fn new_with_timelock_config(
-        network: Network,
-        n_of_n_taproot_public_key: &XOnlyPublicKey,
-        hashlock: LabelHash,
-        timelock_config: &TimelockConfig,
-    ) -> Self {
-        AckConnector::new_with_timelock(
-            network,
-            n_of_n_taproot_public_key,
-            hashlock,
-            timelock_config.operator_ack,
-        )
     }
 
     fn generate_taproot_leaf_0_script(&self) -> ScriptBuf {

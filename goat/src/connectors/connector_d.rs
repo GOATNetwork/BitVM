@@ -10,7 +10,6 @@ use crate::{
     assert_scripts::{LabelHash, OperatorAssertPublicKey, OperatorCommitPubinPublicKey},
     constants::TimelockConfig,
     pubin_disprove_scripts::verify_guest_pubin_commitment,
-    utils::num_blocks_per_network,
 };
 
 use super::{
@@ -45,28 +44,7 @@ impl ConnectorD {
         operator_assert_wots_public_key: &OperatorAssertPublicKey,
         pubin_constant_value: &[u8; 32],
         watchtower_hashlocks: &Vec<LabelHash>,
-    ) -> Self {
-        ConnectorD::new_with_timelock_config(
-            network,
-            operator_taproot_public_key,
-            n_of_n_taproot_public_key,
-            operator_commit_pubin_wots_public_key,
-            operator_assert_wots_public_key,
-            pubin_constant_value,
-            watchtower_hashlocks,
-            &TimelockConfig::default(),
-        )
-    }
-
-    pub fn new_with_timelock(
-        network: Network,
-        operator_taproot_public_key: &XOnlyPublicKey,
-        n_of_n_taproot_public_key: &XOnlyPublicKey,
-        operator_commit_pubin_wots_public_key: &OperatorCommitPubinPublicKey,
-        operator_assert_wots_public_key: &OperatorAssertPublicKey,
-        pubin_constant_value: &[u8; 32],
-        watchtower_hashlocks: &Vec<LabelHash>,
-        take2_blocks_timelock: u32,
+        timelock_config: &TimelockConfig,
     ) -> Self {
         ConnectorD {
             network,
@@ -76,30 +54,8 @@ impl ConnectorD {
             operator_assert_wots_public_key: *operator_assert_wots_public_key,
             pubin_constant_value: *pubin_constant_value,
             watchtower_hashlocks: watchtower_hashlocks.clone(),
-            take2_blocks_timelock: num_blocks_per_network(network, take2_blocks_timelock),
+            take2_blocks_timelock: timelock_config.connector_d,
         }
-    }
-
-    pub fn new_with_timelock_config(
-        network: Network,
-        operator_taproot_public_key: &XOnlyPublicKey,
-        n_of_n_taproot_public_key: &XOnlyPublicKey,
-        operator_commit_pubin_wots_public_key: &OperatorCommitPubinPublicKey,
-        operator_assert_wots_public_key: &OperatorAssertPublicKey,
-        pubin_constant_value: &[u8; 32],
-        watchtower_hashlocks: &Vec<LabelHash>,
-        timelock_config: &TimelockConfig,
-    ) -> Self {
-        ConnectorD::new_with_timelock(
-            network,
-            operator_taproot_public_key,
-            n_of_n_taproot_public_key,
-            operator_commit_pubin_wots_public_key,
-            operator_assert_wots_public_key,
-            pubin_constant_value,
-            watchtower_hashlocks,
-            timelock_config.connector_d,
-        )
     }
 
     fn generate_taproot_leaf_0_script(&self) -> ScriptBuf {

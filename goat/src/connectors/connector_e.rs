@@ -4,7 +4,7 @@ use crate::{
         OperatorCommitPubinSecretKey, PROVER_SIG_LEN,
     },
     constants::TimelockConfig,
-    utils::{num_blocks_per_network, remove_script_and_control_block_from_witness},
+    utils::remove_script_and_control_block_from_witness,
     wots::*,
 };
 use bitcoin::{
@@ -35,44 +35,14 @@ impl ConnectorE {
         network: Network,
         n_of_n_taproot_public_key: &XOnlyPublicKey,
         operator_commit_pubin_wots_public_key: &OperatorCommitPubinPublicKey,
-    ) -> Self {
-        ConnectorE::new_with_timelock_config(
-            network,
-            n_of_n_taproot_public_key,
-            operator_commit_pubin_wots_public_key,
-            &TimelockConfig::default(),
-        )
-    }
-
-    pub fn new_with_timelock(
-        network: Network,
-        n_of_n_taproot_public_key: &XOnlyPublicKey,
-        operator_commit_pubin_wots_public_key: &OperatorCommitPubinPublicKey,
-        operator_commit_blocks_timelock: u32,
+        timelock_config: &TimelockConfig,
     ) -> Self {
         ConnectorE {
             network,
             n_of_n_taproot_public_key: *n_of_n_taproot_public_key,
             operator_commit_pubin_wots_public_key: *operator_commit_pubin_wots_public_key,
-            operator_commit_blocks_timelock: num_blocks_per_network(
-                network,
-                operator_commit_blocks_timelock,
-            ),
+            operator_commit_blocks_timelock: timelock_config.operator_commit,
         }
-    }
-
-    pub fn new_with_timelock_config(
-        network: Network,
-        n_of_n_taproot_public_key: &XOnlyPublicKey,
-        operator_commit_pubin_wots_public_key: &OperatorCommitPubinPublicKey,
-        timelock_config: &TimelockConfig,
-    ) -> Self {
-        ConnectorE::new_with_timelock(
-            network,
-            n_of_n_taproot_public_key,
-            operator_commit_pubin_wots_public_key,
-            timelock_config.operator_commit,
-        )
     }
 
     fn generate_taproot_leaf_0_script(&self) -> ScriptBuf {

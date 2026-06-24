@@ -5,7 +5,7 @@ use bitcoin::{
 use secp256k1::SECP256K1;
 use serde::{Deserialize, Serialize};
 
-use crate::{constants::TimelockConfig, utils::num_blocks_per_network};
+use crate::constants::TimelockConfig;
 
 use super::{
     super::{scripts::*, transactions::base::Input},
@@ -25,41 +25,14 @@ impl ConnectorZ {
         network: Network,
         n_of_n_taproot_public_key: &XOnlyPublicKey,
         user_taproot_public_key: &XOnlyPublicKey,
-    ) -> Self {
-        ConnectorZ::new_with_timelock_config(
-            network,
-            n_of_n_taproot_public_key,
-            user_taproot_public_key,
-            &TimelockConfig::default(),
-        )
-    }
-
-    pub fn new_with_timelock(
-        network: Network,
-        n_of_n_taproot_public_key: &XOnlyPublicKey,
-        user_taproot_public_key: &XOnlyPublicKey,
-        refund_blocks_timelock: u32,
+        timelock_config: &TimelockConfig,
     ) -> Self {
         ConnectorZ {
             network,
             n_of_n_taproot_public_key: *n_of_n_taproot_public_key,
             user_taproot_public_key: *user_taproot_public_key,
-            refund_blocks_timelock: num_blocks_per_network(network, refund_blocks_timelock),
+            refund_blocks_timelock: timelock_config.connector_z,
         }
-    }
-
-    pub fn new_with_timelock_config(
-        network: Network,
-        n_of_n_taproot_public_key: &XOnlyPublicKey,
-        user_taproot_public_key: &XOnlyPublicKey,
-        timelock_config: &TimelockConfig,
-    ) -> Self {
-        ConnectorZ::new_with_timelock(
-            network,
-            n_of_n_taproot_public_key,
-            user_taproot_public_key,
-            timelock_config.connector_z,
-        )
     }
 
     fn generate_taproot_leaf_0_script(&self) -> ScriptBuf {
