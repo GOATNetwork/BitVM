@@ -53,6 +53,36 @@ pub const fn disprove_input_amount() -> u64 {
 pub const fn pubin_disprove_input_amount() -> u64 {
     MIN_RELAY_FEE_PUBIN_DISPROVE + P2A_AMOUNT
 }
+pub const fn watchtower_challenge_timeout_input_amount() -> u64 {
+    MIN_RELAY_FEE_WATCHTOWER_CHALLENGE_TIMEOUT + P2A_AMOUNT
+}
+pub const fn operator_challenge_nack_input_amount() -> u64 {
+    MIN_RELAY_FEE_OPERATOR_CHALLENGE_NACK + P2A_AMOUNT
+}
+pub const fn operator_commit_timeout_input_amount() -> u64 {
+    MIN_RELAY_FEE_OPERATOR_COMMIT_TIMEOUT + P2A_AMOUNT
+}
+pub const fn watchtower_challenge_connector_output_amount() -> u64 {
+    max(
+        DUST_AMOUNT,
+        watchtower_challenge_timeout_input_amount().saturating_sub(ack_connector_output_amount()),
+    )
+}
+pub const fn ack_connector_output_amount() -> u64 {
+    DUST_AMOUNT
+}
+pub const fn connector_e_output_amount() -> u64 {
+    DUST_AMOUNT
+}
+pub const fn connector_f_output_amount() -> u64 {
+    max(
+        DUST_AMOUNT,
+        max(
+            operator_challenge_nack_input_amount().saturating_sub(ack_connector_output_amount()),
+            operator_commit_timeout_input_amount().saturating_sub(connector_e_output_amount()),
+        ),
+    )
+}
 pub const fn connector_d_assert_output_amount() -> u64 {
     let disprove_connector_d_amount =
         if disprove_input_amount() > verifier_assert_prover_output_amount() {
@@ -77,7 +107,10 @@ pub const fn max_assert_cost(num_verifier: usize) -> u64 {
 }
 pub const fn max_watchtower_challenge_cost(num_watchtowers: usize) -> u64 {
     min_relay_fee_watchtower_challenge_init(num_watchtowers)
-        + (num_watchtowers as u64 * 2 + 2) * DUST_AMOUNT
+        + num_watchtowers as u64
+            * (watchtower_challenge_connector_output_amount() + ack_connector_output_amount())
+        + connector_e_output_amount()
+        + connector_f_output_amount()
         + P2A_AMOUNT
 }
 pub const fn max_pegout_cost(num_watchtowers: usize, num_verifier: usize) -> u64 {
@@ -85,6 +118,7 @@ pub const fn max_pegout_cost(num_watchtowers: usize, num_verifier: usize) -> u64
         + max_watchtower_challenge_cost(num_watchtowers)
         + MIN_RELAY_FEE_KICKOFF
         + DUST_AMOUNT * 2
+        + P2A_AMOUNT
 }
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Clone)]

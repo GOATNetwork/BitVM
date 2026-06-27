@@ -211,13 +211,13 @@ impl WatchtowerChallengeInitTransaction {
             .zip(ack_connectors.iter())
         {
             let challenge_output = TxOut {
-                value: Amount::from_sat(DUST_AMOUNT),
+                value: Amount::from_sat(watchtower_challenge_connector_output_amount()),
                 script_pubkey: watchtower_challenge_connector
                     .generate_taproot_address()
                     .script_pubkey(),
             };
             let ack_output = TxOut {
-                value: Amount::from_sat(DUST_AMOUNT),
+                value: Amount::from_sat(ack_connector_output_amount()),
                 script_pubkey: ack_connector.generate_taproot_address().script_pubkey(),
             };
             total_output_amount = total_output_amount - challenge_output.value - ack_output.value;
@@ -226,7 +226,7 @@ impl WatchtowerChallengeInitTransaction {
         }
 
         let connector_e_output = TxOut {
-            value: Amount::from_sat(DUST_AMOUNT),
+            value: Amount::from_sat(connector_e_output_amount()),
             script_pubkey: connector_e.generate_taproot_address().script_pubkey(),
         };
         let anchor_output = p2a_output();

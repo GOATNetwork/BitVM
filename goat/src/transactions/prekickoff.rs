@@ -127,7 +127,10 @@ impl PrekickoffTransaction {
 
         if total_input_amount
             < Amount::from_sat(
-                fee_amount + 3 * DUST_AMOUNT + max_pegout_cost(watchtower_num, verifier_num),
+                fee_amount
+                    + 2 * DUST_AMOUNT
+                    + P2A_AMOUNT
+                    + max_pegout_cost(watchtower_num, verifier_num),
             )
         {
             return Err(Error::Transaction(InsufficientInputAmount));

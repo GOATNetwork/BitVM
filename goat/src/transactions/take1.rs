@@ -85,7 +85,7 @@ impl Take1Transaction {
         let total_input_amount =
             input_0.amount + input_1.amount + input_2.amount + input_3.amount + input_4.amount;
 
-        if total_input_amount < (Amount::from_sat(MIN_RELAY_FEE_TAKE_1 + 2 * DUST_AMOUNT)) {
+        if total_input_amount < Amount::from_sat(MIN_RELAY_FEE_TAKE_1 + DUST_AMOUNT + P2A_AMOUNT) {
             return Err(Error::Transaction(InsufficientInputAmount));
         }
 

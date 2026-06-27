@@ -14,7 +14,7 @@ use crate::{
     scripts::p2a_output,
     transactions::{
         base::{
-            max_assert_cost, max_watchtower_challenge_cost, output_topology, tx_output_input,
+            max_pegout_cost, max_watchtower_challenge_cost, output_topology, tx_output_input,
             BaseTransaction, Input, DUST_AMOUNT, MIN_RELAY_FEE_KICKOFF,
         },
         pre_signed::{pre_sign_taproot_input_default, PreSignedTransaction},
@@ -61,14 +61,7 @@ impl KickoffTransaction {
         let input_0_leaf = 0;
         let _input_0 = kickoff_connector.generate_taproot_leaf_tx_in(input_0_leaf, input_0);
 
-        if input_0.amount
-            < Amount::from_sat(
-                MIN_RELAY_FEE_KICKOFF
-                    + 4 * DUST_AMOUNT
-                    + max_watchtower_challenge_cost(watchtower_num)
-                    + max_assert_cost(verifier_num),
-            )
-        {
+        if input_0.amount < Amount::from_sat(max_pegout_cost(watchtower_num, verifier_num)) {
             return Err(Error::Transaction(InsufficientInputAmount));
         }
         let total_output_amount = input_0.amount - Amount::from_sat(MIN_RELAY_FEE_KICKOFF);
