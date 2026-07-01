@@ -53,7 +53,7 @@ pub fn verify_prover_assert_script_768_wire(
     prover_wots_pubkey: &<Wots96 as Wots>::PublicKey,
 ) -> Script {
     script! {
-        OP_DROP
+        OP_2DROP
         { Wots96::checksig_verify_and_clear_stack(prover_wots_pubkey) }
         OP_TRUE
     }
