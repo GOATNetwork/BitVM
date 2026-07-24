@@ -4,9 +4,7 @@ use bitcoin::{
     absolute, consensus, taproot::LeafVersion, Amount, ScriptBuf, TapSighashType, Transaction,
     TxIn, TxOut,
 };
-use bitvm::{
-    chunk::api::type_conversion_utils::RawWitness, execute_script_without_stack_limit, treepp::*,
-};
+use bitvm::{chunk::api::type_conversion_utils::RawWitness, execute_script, treepp::*};
 use musig2::{errors::SigningError, AggNonce, PartialSignature, SecNonce};
 use serde::{Deserialize, Serialize};
 
@@ -560,7 +558,7 @@ pub fn validate_pubin(
         { unlock_data.clone() }
     };
     let verification_script = witness_script.push_script(input_lock_script.clone());
-    let exec_result = execute_script_without_stack_limit(verification_script);
+    let exec_result = execute_script(verification_script);
     if exec_result.success {
         Some((unlock_data, input_lock_script))
     } else {

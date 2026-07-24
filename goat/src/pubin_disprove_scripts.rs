@@ -19,7 +19,6 @@ pub fn verify_guest_pubin_commitment(
 ) -> Script {
     let wots96_msg_stack_items_num = Wots96::MSG_BYTE_LEN as usize;
     let wots96_sig_stack_items_num = Wots96::TOTAL_DIGIT_LEN as usize * 2;
-    let operator_assert_x_d_depth = 32 + OPERATOR_ASSERT_X_D_INDEX * 32;
 
     script! {
         { Wots96::checksig_verify(guest_pubin_wots_pubkey) }
@@ -32,14 +31,24 @@ pub fn verify_guest_pubin_commitment(
         { verify_constant_pubin_segment_dup(GUEST_PUBIN_CONSTANT_INDEX, constant_value) }
         OP_FROMALTSTACK OP_BOOLAND OP_TOALTSTACK
 
-        { generate_guest_pubin_commitment(GUEST_PUBIN_NUM as u32) }
-        { zip_nibbles_bytes32() }
-
-        { roll_n(32, wots96_sig_stack_items_num) }
+        // Consume the operator assertion WOTS witness before computing the guest
+        // pubin commitment. Leaving its 196 raw witness items on the stack while
+        // SHA256 runs pushes the combined stack over Bitcoin's 1000-item limit.
+        { roll_n(wots96_msg_stack_items_num, wots96_sig_stack_items_num) }
         { Wots96::checksig_verify(operator_assert_wots_pubkey) }
 
-        { roll_n(wots96_msg_stack_items_num, 32) }
-        { lift_and_reverse_bytes(operator_assert_x_d_depth, 32) }
+        // Keep only x_d from the 96-byte operator assertion message. The other
+        // 64 bytes are pi1.x and pi1.y and are not needed by PubinDisprove.
+        { lift_and_reverse_bytes(OPERATOR_ASSERT_X_D_INDEX * 32, 32) }
+        { roll_n(32, OPERATOR_ASSERT_X_D_INDEX * 32) }
+        for _ in 0..(OPERATOR_ASSERT_X_D_INDEX * 32) {
+            OP_DROP
+        }
+
+        // Move the 96-byte guest pubin above x_d and compute its commitment.
+        { roll_n(32, wots96_msg_stack_items_num) }
+        { generate_guest_pubin_commitment(GUEST_PUBIN_NUM as u32) }
+        { zip_nibbles_bytes32() }
 
         { 1 }
         for i in (0..32).rev() {
@@ -55,9 +64,6 @@ pub fn verify_guest_pubin_commitment(
         OP_FROMALTSTACK
         OP_BOOLAND
         OP_NOT
-        for _ in 0..(OPERATOR_ASSERT_X_D_INDEX * 32) {
-            OP_NIP
-        }
     }
 }
 
@@ -282,7 +288,7 @@ mod tests {
         assert_scripts::{label_hash, OPERATOR_ASSERT_X_D_INDEX},
         wots::Wots96,
     };
-    use bitvm::{execute_script_without_stack_limit, FmtStack};
+    use bitvm::{execute_script, FmtStack};
 
     fn guest_pubin(blockhash: &[u8; 32], constant: &[u8; 32], included_map: &[u8; 32]) -> [u8; 96] {
         let mut msg = [0u8; 96];
@@ -309,7 +315,7 @@ mod tests {
             { generate_guest_pubin_commitment(GUEST_PUBIN_NUM as u32) }
             { zip_nibbles_bytes32() }
         };
-        let result = execute_script_without_stack_limit(s);
+        let result = execute_script(s);
         assert_eq!(result.error, None, "{result}");
         assert!(result.final_stack.len() >= 32, "{result}");
         let commitment_start = result.final_stack.len() - 32;
@@ -386,7 +392,12 @@ mod tests {
                 hashes,
             ) }
         };
-        let result = execute_script_without_stack_limit(s);
+        let result = execute_script(s);
+        assert!(
+            result.stats.max_nb_stack_items <= 1000,
+            "PubinDisprove exceeded Bitcoin's stack limit: {}",
+            result.stats.max_nb_stack_items
+        );
         result.success
     }
 
