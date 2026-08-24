@@ -390,6 +390,7 @@ mod test {
     use std::collections::HashMap;
 
     use crate::chunk::api::generate_signatures_for_any_proof;
+    use crate::chunk::api_compiletime_utils::generate_segments_using_mock_vk_and_mock_proof;
 
     use crate::chunk::api_runtime_utils::{
         analyze_largest_segments_from_signatures, get_segments_from_assertion,
