@@ -1,11 +1,11 @@
-use crate::{constants::CONNECTOR_Z_TIMELOCK, utils::num_blocks_per_network};
 use bitcoin::{
     taproot::{TaprootBuilder, TaprootSpendInfo},
     Address, Network, ScriptBuf, TxIn, XOnlyPublicKey,
 };
-use bitvm::treepp::script;
 use secp256k1::SECP256K1;
 use serde::{Deserialize, Serialize};
+
+use crate::{constants::CONNECTOR_Z_TIMELOCK, utils::num_blocks_per_network};
 
 use super::{
     super::{scripts::*, transactions::base::Input},
@@ -15,56 +15,40 @@ use super::{
 #[derive(Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct ConnectorZ {
     pub network: Network,
-    pub depositor_taproot_public_key: XOnlyPublicKey,
     pub n_of_n_taproot_public_key: XOnlyPublicKey,
-    pub evm_address: String,
-    pub num_blocks_timelock_0: u32,
+    pub user_taproot_public_key: XOnlyPublicKey,
+    pub refund_blocks_timelock: u32,
 }
 
 impl ConnectorZ {
     pub fn new(
         network: Network,
-        evm_address: &str,
-        depositor_taproot_public_key: &XOnlyPublicKey,
         n_of_n_taproot_public_key: &XOnlyPublicKey,
+        user_taproot_public_key: &XOnlyPublicKey,
     ) -> Self {
         ConnectorZ {
             network,
-            depositor_taproot_public_key: *depositor_taproot_public_key,
             n_of_n_taproot_public_key: *n_of_n_taproot_public_key,
-            evm_address: evm_address.to_string(),
-            num_blocks_timelock_0: num_blocks_per_network(network, CONNECTOR_Z_TIMELOCK),
+            user_taproot_public_key: *user_taproot_public_key,
+            refund_blocks_timelock: num_blocks_per_network(network, CONNECTOR_Z_TIMELOCK),
         }
     }
 
     fn generate_taproot_leaf_0_script(&self) -> ScriptBuf {
-        generate_timelock_taproot_script(
-            &self.depositor_taproot_public_key,
-            self.num_blocks_timelock_0,
-        )
+        generate_pay_to_pubkey_taproot_script(&self.n_of_n_taproot_public_key)
     }
 
     fn generate_taproot_leaf_0_tx_in(&self, input: &Input) -> TxIn {
-        generate_timelock_tx_in(input, self.num_blocks_timelock_0)
+        generate_default_tx_in(input)
     }
 
-    // leaf[1] is spendable by a multisig of depositor and OPK and VPK[1…N]
-    // the transaction script contains an [evm_address] (inscription data)
     fn generate_taproot_leaf_1_script(&self) -> ScriptBuf {
-        script! {
-        OP_FALSE
-        OP_IF
-        { self.evm_address.clone().into_bytes() }
-        OP_ENDIF
-        { self.n_of_n_taproot_public_key }
-        OP_CHECKSIGVERIFY
-        { self.depositor_taproot_public_key }
-        OP_CHECKSIG
-        }
-        .compile()
+        generate_timelock_taproot_script(&self.user_taproot_public_key, self.refund_blocks_timelock)
     }
 
-    fn generate_taproot_leaf_1_tx_in(&self, input: &Input) -> TxIn { generate_default_tx_in(input) }
+    fn generate_taproot_leaf_1_tx_in(&self, input: &Input) -> TxIn {
+        generate_timelock_tx_in(input, self.refund_blocks_timelock)
+    }
 }
 
 impl TaprootConnector for ConnectorZ {
@@ -90,8 +74,8 @@ impl TaprootConnector for ConnectorZ {
             .expect("Unable to add leaf 0")
             .add_leaf(1, self.generate_taproot_leaf_1_script())
             .expect("Unable to add leaf 1")
-            .finalize(SECP256K1, self.depositor_taproot_public_key) // TODO: should this be depositor or n-of-n
-            .expect("Unable to finalize ttaproot")
+            .finalize(SECP256K1, self.n_of_n_taproot_public_key)
+            .expect("Unable to finalize taproot")
     }
 
     fn generate_taproot_address(&self) -> Address {

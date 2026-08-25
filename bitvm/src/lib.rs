@@ -1,3 +1,4 @@
+#![allow(deprecated)]
 #[allow(dead_code)]
 // Re-export what is needed to write treepp scripts
 pub mod treepp {
@@ -166,6 +167,7 @@ fn execute_script_buf_optional_stack_limit(
             break;
         }
     }
+
     let res = exec.result().unwrap();
     ExecuteInfo {
         success: res.success,

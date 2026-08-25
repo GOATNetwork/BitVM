@@ -1,7 +1,7 @@
-use crate::bigint::U256;
 use crate::bn254::fq12::Fq12;
 use crate::bn254::fq2::Fq2;
 use crate::bn254::fq6::Fq6;
+use crate::bn254::g1::G1Affine;
 use crate::bn254::g2::{
     hinted_affine_add_line, hinted_affine_double_line, hinted_check_line_through_point,
     hinted_check_tangent_line_keep_elements, hinted_ell_by_constant_affine,
@@ -176,9 +176,11 @@ fn utils_point_double_eval(
             for _ in 0..Fq::N_LIMBS * 2 {
                 OP_DEPTH OP_1SUB OP_ROLL
             }                                        // -bias, ...,  x, y, alpha
+            { Fq2::check_validity_and_keep_element() }
             for _ in 0..Fq::N_LIMBS * 2 {
                 OP_DEPTH OP_1SUB OP_ROLL
             }
+            { Fq2::check_validity_and_keep_element() }
             // [tx ty a b]
             {Fq2::roll(6)} {Fq2::roll(6)}          // alpha, -bias, x, y
             // [a b tx ty]
@@ -323,25 +325,25 @@ fn utils_point_add_eval(
             {drop_and_insert_zero.clone()}
         OP_ELSE
             // [t, q]
-            { G2Affine::roll(1) }
+            { G2Affine::roll(4) }
             { G2Affine::is_zero_keep_element() }
             OP_IF // t == 0
                 // [q, t]
-                {G2Affine::roll(1)}
+                {G2Affine::roll(4)}
                 {drop_and_insert_zero.clone()}
             OP_ELSE
                 // qx qy tx ty
-                {G2Affine::copy(1)}
+                {G2Affine::copy(4)}
                 // qx qy tx ty qx qy
                 { Fq2::neg(0)}
                 // qx qy tx ty qx -qy
-                {G2Affine::copy(1)}
+                {G2Affine::copy(4)}
                 // qx qy tx ty qx -qy tx ty
                 {G2Affine::equal()} // q = -t ?
                 // qx qy tx ty 0/1
                 OP_IF // q == -t
                     // [q, t]
-                    {G2Affine::roll(1)}
+                    {G2Affine::roll(4)}
                     // [t, q]
                     {drop_and_insert_zero}
                 OP_ELSE
@@ -349,9 +351,11 @@ fn utils_point_add_eval(
                     for _ in 0..Fq::N_LIMBS * 2 {
                         OP_DEPTH OP_1SUB OP_ROLL
                     }
+                    { Fq2::check_validity_and_keep_element() }
                     for _ in 0..Fq::N_LIMBS * 2 {
                         OP_DEPTH OP_1SUB OP_ROLL
                     }
+                    { Fq2::check_validity_and_keep_element() }
                     // [qx, qy, tx, ty, c3, c4]
                     {Fq2::roll(6)} {Fq2::roll(6)}
                     // [qx, qy, c3, c4, tx, ty]
@@ -506,8 +510,7 @@ fn point_ops_and_multiply_line_evals_step_1(
     };
 
     let ops_scr = script! {
-        // [hints, t4, (q4), p4, p3, p2]
-        {Fq2::toaltstack()}
+        // [hints, t4, (q4), p4, p3] [p2]
         {Fq2::copy(2)} {Fq2::toaltstack()}
         {Fq2::toaltstack()}
         // [hints, t4, (q4), p4] [p2, p4, p3]
@@ -667,6 +670,24 @@ pub(crate) fn chunk_point_ops_and_multiply_line_evals_step_1(
     let scr = script! {
         {pre_ops_scr}
         // [hints, t4, (q4), p4, p3, p2] [outhash, p2hash, p3hash, p4hash, in_t4hash, ht4_le]
+
+        // Validity checks: t4 is G2Affine, q4 only exists if !is_dbl and is G2Affine, p4, p3 and p2 are G1Affine.
+        { Fq::check_validity() } { Fq::check_validity() } //p2
+        { Fq::check_validity() } { Fq::check_validity() } //p3
+        { Fq::check_validity() } { Fq::check_validity() } //p4
+        if !is_dbl {
+            { Fq2::check_validity() } { Fq2::check_validity() } //p4
+        }
+        { Fq2::check_validity() } { Fq2::check_validity() } //t4
+
+        { G2Affine::fromaltstack() } //t4
+        if !is_dbl {
+           { G2Affine::fromaltstack() } //p4
+        }
+        { G1Affine::fromaltstack() } //p4
+        { G1Affine::fromaltstack() } //p3
+
+        // [hints, t4, (q4), p4, p3] [p2]
         {ops_scr}
         // [t4, p4, p3, p2, nt4, F, 0/1] [outhash, p2hash, p3hash, p4hash, in_t4hash, ht4_le]
         {pre_hash_scr}
@@ -684,6 +705,19 @@ pub(crate) fn chunk_point_ops_and_multiply_line_evals_step_2(
     let scr = script! {
         // [hints, apb, Ab, c, Haux_in, h] [hash_h, hash_in]
         {Fq::roll(6)} {Fq::toaltstack()}
+        // [hints, {apb, Ab, c}, h] [hash_h, hash_in, Haux_in]
+
+        // Validity checks: {apb, Ab, c} is part of G2EvalMul, apb is two Fq2's, Ab is a Fq6, c is two Fq2's, h is Fq6
+        { Fq6::check_validity() } //h
+        { Fq2::check_validity() } { Fq2::check_validity() } //c
+        { Fq6::check_validity() } //Ab
+        { Fq2::check_validity() } { Fq2::check_validity() } //apb
+
+        { Fq2::fromaltstack() } { Fq2::fromaltstack() }
+        { Fq6::fromaltstack() }
+        { Fq2::fromaltstack() } { Fq2::fromaltstack() }
+        { Fq6::fromaltstack() }
+
         // [hints, {apb, Ab, c}, h] [hash_h, hash_in, Haux_in]
         {ops_scr}
 
@@ -847,8 +881,7 @@ pub(crate) fn chunk_init_t4(ts: [ark_ff::BigInt<4>; 4]) -> (ElemG2Eval, bool, Sc
 
         {Fq2::copy(2)} {Fq2::copy(2)}
         for _ in 0..4 {
-            { Fq::push_hex(Fq::MODULUS) }
-            { U256::lessthan(1, 0) } // a < p
+            { Fq::is_valid() }
             OP_TOALTSTACK
         }
         {1}
@@ -1226,6 +1259,7 @@ mod test {
             for h in &preimage_hints {
                 {h.push()}
             }
+            { Fq2::toaltstack() }
             {ops_scr}
             OP_VERIFY // valid input
              // [t4, p4, p3, p2, nt4, gpf, fg, p2le]
@@ -1340,6 +1374,7 @@ mod test {
             for h in &preimage_hints {
                 {h.push()}
             }
+            { Fq2::toaltstack() }
             {ops_scr}
             OP_VERIFY // valid input
              // [t4, p4, p3, p2, nt4, gpf, fg, p2le]

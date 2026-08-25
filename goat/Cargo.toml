@@ -49,5 +49,3 @@ lto = true
 inherits = "release"
 debug = true
 
-[[bin]]
-name = "goat-bridge"

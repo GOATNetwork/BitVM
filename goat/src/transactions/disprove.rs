@@ -1,253 +1,70 @@
-use bitcoin::{
-    absolute, consensus, Amount, Network, PublicKey, ScriptBuf, TapSighashType, Transaction, TxOut,
+use crate::connectors::base::generate_default_tx_in;
+use crate::disprove_scripts::{
+    utils_signatures_from_raw_witnesses, validate_guest_assertions, GUEST_VALIDATION_TAPS,
 };
-use bitvm::chunk::api::type_conversion_utils::RawWitness;
-use musig2::{secp256k1::schnorr::Signature, PartialSignature, PubNonce, SecNonce};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use crate::{error::Error, transactions::base::Input};
+use ark_bn254::Bn254;
+use ark_groth16::VerifyingKey;
+use bitcoin::taproot::LeafVersion;
+use bitcoin::{taproot::TaprootSpendInfo, ScriptBuf, TxIn};
+use bitvm::chunk::api::type_conversion_utils::script_to_witness;
+use bitvm::chunk::api::validate_assertions_lit;
+use bitvm::chunk::api::{type_conversion_utils::RawWitness, NUM_TAPS};
 
+pub fn validate_assert(
+    raw_commit_blockhash_witness: Vec<RawWitness>,
+    raw_assert_witness: Vec<RawWitness>,
+    ack_preimages: Vec<Vec<u8>>, // preimages length should match the number of hashes, use empty vec for unknown preimages
+    guest_validation_scripts: &[ScriptBuf; GUEST_VALIDATION_TAPS],
+    vk: &VerifyingKey<Bn254>,
+    proof_validation_scripts: &[ScriptBuf; NUM_TAPS],
+) -> Option<(RawWitness, ScriptBuf)> {
+    let mut raw_wits = raw_commit_blockhash_witness;
+    raw_wits.extend(raw_assert_witness);
+    let wots_sigs = utils_signatures_from_raw_witnesses(&raw_wits);
 
-use super::{
-    super::{
-        connectors::{base::*, connector_5::Connector5, connector_c::ConnectorC},
-        contexts::{base::BaseContext, operator::OperatorContext, verifier::VerifierContext},
-        scripts::*,
-    },
-    base::*,
-    pre_signed::*,
-    pre_signed_musig2::*,
-    signing::push_taproot_leaf_script_and_control_block_to_witness,
-};
-
-#[derive(Serialize, Deserialize, Eq, PartialEq, Clone)]
-pub struct DisproveTransaction {
-    #[serde(with = "consensus::serde::With::<consensus::serde::Hex>")]
-    tx: Transaction,
-    #[serde(with = "consensus::serde::With::<consensus::serde::Hex>")]
-    prev_outs: Vec<TxOut>,
-    prev_scripts: Vec<ScriptBuf>,
-    reward_output_amount: Amount,
-
-    musig2_nonces: HashMap<usize, HashMap<PublicKey, PubNonce>>,
-    musig2_nonce_signatures: HashMap<usize, HashMap<PublicKey, Signature>>,
-    musig2_signatures: HashMap<usize, HashMap<PublicKey, PartialSignature>>,
+    if let Some((index, wit)) = validate_guest_assertions(
+        &wots_sigs.0,
+        &wots_sigs.1 .0.clone(),
+        &ack_preimages,
+        guest_validation_scripts,
+    ) {
+        return Some((
+            script_to_witness(wit),
+            guest_validation_scripts[index].clone(),
+        ));
+    };
+    if let Some((index, wit)) = validate_assertions_lit(vk, wots_sigs.1, proof_validation_scripts) {
+        return Some((
+            script_to_witness(wit),
+            proof_validation_scripts[index].clone(),
+        ));
+    };
+    None
 }
 
-impl PreSignedTransaction for DisproveTransaction {
-    fn tx(&self) -> &Transaction { &self.tx }
-
-    fn tx_mut(&mut self) -> &mut Transaction { &mut self.tx }
-
-    fn prev_outs(&self) -> &Vec<TxOut> { &self.prev_outs }
-
-    fn prev_scripts(&self) -> &Vec<ScriptBuf> { &self.prev_scripts }
-}
-
-impl PreSignedMusig2Transaction for DisproveTransaction {
-    fn musig2_nonces(&self) -> &HashMap<usize, HashMap<PublicKey, PubNonce>> { &self.musig2_nonces }
-    fn musig2_nonces_mut(&mut self) -> &mut HashMap<usize, HashMap<PublicKey, PubNonce>> {
-        &mut self.musig2_nonces
-    }
-    fn musig2_nonce_signatures(&self) -> &HashMap<usize, HashMap<PublicKey, Signature>> {
-        &self.musig2_nonce_signatures
-    }
-    fn musig2_nonce_signatures_mut(
-        &mut self,
-    ) -> &mut HashMap<usize, HashMap<PublicKey, Signature>> {
-        &mut self.musig2_nonce_signatures
-    }
-    fn musig2_signatures(&self) -> &HashMap<usize, HashMap<PublicKey, PartialSignature>> {
-        &self.musig2_signatures
-    }
-    fn musig2_signatures_mut(
-        &mut self,
-    ) -> &mut HashMap<usize, HashMap<PublicKey, PartialSignature>> {
-        &mut self.musig2_signatures
-    }
-    fn verifier_inputs(&self) -> Vec<usize> { vec![0] }
-}
-
-impl DisproveTransaction {
-    pub fn new(
-        context: &OperatorContext,
-        connector_5: &Connector5,
-        connector_c: &ConnectorC,
-        input_0: Input,
-        input_1: Input,
-    ) -> Self {
-        Self::new_for_validation(context.network, connector_5, connector_c, input_0, input_1)
-    }
-
-    pub fn new_for_validation(
-        _network: Network,
-        connector_5: &Connector5,
-        connector_c: &ConnectorC,
-        input_0: Input,
-        input_1: Input,
-    ) -> Self {
-        let input_0_leaf = 1;
-        let _input_0 = connector_5.generate_taproot_leaf_tx_in(input_0_leaf, &input_0);
-
-        let _input_1 = generate_default_tx_in(&input_1);
-
-        // Since the final transaction size cannot be determined at the time of construction，
-        // relay fee will be calculated and deducted at the time of disprove
-        let total_output_amount = input_0.amount + input_1.amount;
-
-        let output_0_amount = Amount::from_sat(0);
-        let _output_0 = TxOut {
-            value: output_0_amount,
-            script_pubkey: generate_opreturn_script("challenge success".into()),
-        };
-
-        let reward_output_amount = total_output_amount - output_0_amount;
-        let _output_1 = TxOut {
-            value: reward_output_amount,
-            script_pubkey: ScriptBuf::default(),
-        };
-
-        DisproveTransaction {
-            tx: Transaction {
-                version: bitcoin::transaction::Version(2),
-                lock_time: absolute::LockTime::ZERO,
-                input: vec![_input_0, _input_1],
-                output: vec![_output_0, _output_1],
-            },
-            prev_outs: vec![
-                TxOut {
-                    value: input_0.amount,
-                    script_pubkey: connector_5.generate_taproot_address().script_pubkey(),
-                },
-                TxOut {
-                    value: input_1.amount,
-                    script_pubkey: connector_c.generate_taproot_address().script_pubkey(),
-                },
-            ],
-            prev_scripts: vec![
-                connector_5.generate_taproot_leaf_script(input_0_leaf),
-                // `input_1` prev_script is not known at this point
-            ],
-            reward_output_amount,
-            musig2_nonces: HashMap::new(),
-            musig2_nonce_signatures: HashMap::new(),
-            musig2_signatures: HashMap::new(),
+pub fn disprove(
+    connector_e_taproot_spend_info: &TaprootSpendInfo,
+    connector_e_input: &Input,
+    input_script_witness: RawWitness,
+    input_lock_script: ScriptBuf,
+) -> Result<TxIn, Error> {
+    let mut txin = generate_default_tx_in(connector_e_input);
+    // push witness
+    input_script_witness
+        .into_iter()
+        .for_each(|x| txin.witness.push(x));
+    // push script and control block
+    let prevout_leaf = (input_lock_script, LeafVersion::TapScript);
+    let control_block = match connector_e_taproot_spend_info.control_block(&prevout_leaf) {
+        Some(c) => c,
+        _ => {
+            return Err(Error::Other(
+                "Unable to generate control block for disprove txin",
+            ))
         }
-    }
-
-    fn sign_input_0(
-        &mut self,
-        context: &VerifierContext,
-        connector_5: &Connector5,
-        secret_nonce: &SecNonce,
-    ) {
-        let input_index = 0;
-        pre_sign_musig2_taproot_input(
-            self,
-            context,
-            input_index,
-            TapSighashType::Single,
-            secret_nonce,
-        );
-
-        // TODO: Consider verifying the final signature against the n-of-n public key and the tx.
-        if self.musig2_signatures[&input_index].len() == context.n_of_n_public_keys.len() {
-            self.finalize_input_0(context, connector_5);
-        }
-    }
-
-    fn finalize_input_0(&mut self, context: &dyn BaseContext, connector_5: &Connector5) {
-        let input_index = 0;
-        finalize_musig2_taproot_input(
-            self,
-            context,
-            input_index,
-            TapSighashType::Single,
-            connector_5.generate_taproot_spend_info(),
-        );
-    }
-
-    pub fn push_pre_sigs(
-        &mut self,
-        connector_5: &Connector5,
-        input_0_sig: bitcoin::taproot::Signature,
-    ) {
-        let input_index = 0;
-        let script = self.prev_scripts()[input_index].clone();
-        let spend_info = connector_5.generate_taproot_spend_info();
-        let tx_mut = self.tx_mut();
-        // Push signature to witness
-        tx_mut.input[input_index]
-            .witness
-            .push(input_0_sig.serialize());
-
-        // Push script + control block
-        push_taproot_leaf_script_and_control_block_to_witness(
-            tx_mut,
-            input_index,
-            &spend_info,
-            &script,
-        );
-    }
-
-    pub fn pre_sign(
-        &mut self,
-        context: &VerifierContext,
-        connector_5: &Connector5,
-        secret_nonces: &HashMap<usize, SecNonce>,
-    ) {
-        let input_index = 0;
-        self.sign_input_0(context, connector_5, &secret_nonces[&input_index]);
-    }
-
-    // The relay fee for Disprove transaction will be deducted from the reward
-    pub fn add_input_output(
-        &mut self,
-        connector_c: &ConnectorC,
-        input_script_index: u32,
-        input_script_witness: RawWitness,
-        output_script_pubkey: ScriptBuf,
-        fee_rate: f64,
-    ) {
-        // Add output
-        let output_index = 1;
-        self.tx.output[output_index].script_pubkey = output_script_pubkey;
-
-        let input_index = 1;
-
-        // Push the unlocking witness
-        input_script_witness
-            .into_iter()
-            .for_each(|x| self.tx.input[input_index].witness.push(x));
-
-        // Push script + control block
-        let script = connector_c.generate_taproot_leaf_script(input_script_index);
-        let taproot_spend_info = connector_c.generate_taproot_spend_info();
-        push_taproot_leaf_script_and_control_block_to_witness(
-            &mut self.tx,
-            input_index,
-            &taproot_spend_info,
-            &script,
-        );
-
-        // Deduct relay fee
-        let fee_amount = Amount::from_sat((self.tx.weight().to_vbytes_ceil() as f64 * fee_rate).ceil() as u64);
-        assert!(fee_amount <= self.tx.output[output_index].value, "reward does not cover relay fee");
-        self.tx.output[output_index].value -= fee_amount;
-    }
-
-    pub fn merge(&mut self, disprove: &DisproveTransaction) {
-        merge_transactions(&mut self.tx, &disprove.tx);
-        merge_musig2_nonces_and_signatures(self, disprove);
-    }
-}
-
-impl BaseTransaction for DisproveTransaction {
-    fn finalize(&self) -> Transaction {
-        if self.tx.input.len() < 2 || self.tx.output.len() < 2 {
-            panic!("Missing input or output. Call add_input_output before finalizing");
-        }
-
-        self.tx.clone()
-    }
-    fn name(&self) -> &'static str { "Disprove" }
+    };
+    txin.witness.push(prevout_leaf.0.to_bytes());
+    txin.witness.push(control_block.serialize());
+    Ok(txin)
 }

@@ -28,6 +28,7 @@ pub enum ConnectorError {
 #[derive(Debug)]
 pub enum TransactionError {
     AlreadyMined(Txid),
+    InsufficientInputAmount,
 }
 
 #[derive(Debug)]
@@ -44,5 +45,7 @@ pub enum Error {
 }
 
 impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { write!(f, "{:?}", self) }
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:?}", self)
+    }
 }

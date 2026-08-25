@@ -1,3 +1,4 @@
+use super::fq2::Fq2;
 use crate::bn254::fp254impl::Fp254Impl;
 use crate::bn254::fq::Fq;
 use crate::bn254::utils::Hint;
@@ -5,8 +6,7 @@ use crate::treepp::{script, Script};
 use ark_ec::AffineRepr;
 use ark_ff::{AdditiveGroup, Field};
 use num_bigint::BigUint;
-
-use super::fq2::Fq2;
+use num_traits::Zero;
 
 pub struct G1Affine;
 
@@ -132,13 +132,6 @@ impl G1Affine {
         (script, hints)
     }
 
-    pub fn push_zero() -> Script {
-        script! {
-            { Fq::push_zero() }
-            { Fq::push_zero() }
-        }
-    }
-
     pub fn push(element: ark_bn254::G1Affine) -> Script {
         script! {
             { Fq::push_u32_le(&BigUint::from(element.x).to_u32_digits()) }
@@ -146,19 +139,43 @@ impl G1Affine {
         }
     }
 
-    pub fn read_from_stack(witness: Vec<Vec<u8>>) -> ark_bn254::G1Affine {
-        assert_eq!(witness.len() as u32, Fq::N_LIMBS * 2);
-        let x = Fq::read_u32_le(witness[0..Fq::N_LIMBS as usize].to_vec());
-        let y = Fq::read_u32_le(witness[Fq::N_LIMBS as usize..2 * Fq::N_LIMBS as usize].to_vec());
-        ark_bn254::G1Affine {
-            x: BigUint::from_slice(&x).into(),
-            y: BigUint::from_slice(&y).into(),
-            infinity: false,
+    pub fn toaltstack() -> Script {
+        script! {
+            {Fq::toaltstack()}
+            {Fq::toaltstack()}
         }
     }
 
-    pub fn hinted_check_add(t: ark_bn254::G1Affine, q: ark_bn254::G1Affine) -> (Script, Vec<Hint>) {
+    pub fn fromaltstack() -> Script {
+        script! {
+            {Fq::fromaltstack()}
+            {Fq::fromaltstack()}
+        }
+    }
+
+    pub fn read_from_stack(witness: Vec<Vec<u8>>) -> ark_bn254::G1Affine {
+        assert_eq!(witness.len() as u32, Fq::N_LIMBS * 2);
+        let x: ark_bn254::Fq =
+            BigUint::from_slice(&Fq::read_u32_le(witness[0..Fq::N_LIMBS as usize].to_vec())).into();
+        let y: ark_bn254::Fq = BigUint::from_slice(&Fq::read_u32_le(
+            witness[Fq::N_LIMBS as usize..2 * Fq::N_LIMBS as usize].to_vec(),
+        ))
+        .into();
+        let is_inf = x.is_zero() && y.is_zero();
+        ark_bn254::G1Affine {
+            x,
+            y,
+            infinity: is_inf,
+        }
+    }
+
+    pub fn hinted_check_add_prevent_degenerate(
+        t: ark_bn254::G1Affine,
+        q: ark_bn254::G1Affine,
+    ) -> (Script, Vec<Hint>) {
         let mut hints = vec![];
+        assert_ne!(t, q);
+        assert_ne!(t, -q);
 
         let (alpha, bias) = if !t.is_zero() && !q.is_zero() {
             let alpha = (t.y - q.y) / (t.x - q.x);
@@ -176,7 +193,7 @@ impl G1Affine {
             OP_IF
                 { G1Affine::drop() }
             OP_ELSE
-                { G1Affine::roll(1) }
+                { G1Affine::roll(2) }
                 { G1Affine::is_zero_keep_element() }
                 OP_IF
                     { G1Affine::drop() }
@@ -184,9 +201,11 @@ impl G1Affine {
                     for _ in 0..Fq::N_LIMBS {
                         OP_DEPTH OP_1SUB OP_ROLL
                     }
+                    { Fq::check_validity_and_keep_element() }
                     for _ in 0..Fq::N_LIMBS {
                         OP_DEPTH OP_1SUB OP_ROLL
                     }                                  // qx qy tx ty c3 c4
+                    { Fq::check_validity_and_keep_element() }
                     { Fq::copy(1) }
                     { Fq::copy(1) }                    // qx qy tx ty c3 c4 c3 c4
                     { Fq::copy(5) }
@@ -208,6 +227,106 @@ impl G1Affine {
             hints.extend(hint1);
             hints.extend(hint2);
         }
+
+        (script, hints)
+    }
+
+    pub fn hinted_check_add(t: ark_bn254::G1Affine, q: ark_bn254::G1Affine) -> (Script, Vec<Hint>) {
+        let mut hints = vec![];
+
+        let (alpha, bias) = if t.is_zero() || q.is_zero() {
+            // no hint, dummy zero
+            (ark_bn254::Fq::ZERO, ark_bn254::Fq::ZERO)
+        } else if t == -q {
+            // no hint, dummy zero
+            (ark_bn254::Fq::ZERO, ark_bn254::Fq::ZERO)
+        } else if t == q {
+            // doubling hints
+            let alpha = (t.x.square() + t.x.square() + t.x.square()) / (t.y + t.y);
+            let bias = t.y - alpha * t.x;
+            (alpha, bias)
+        } else {
+            // adding hints
+            let alpha = (t.y - q.y) / (t.x - q.x);
+            let bias = t.y - alpha * t.x;
+            (alpha, bias)
+        };
+
+        let (hinted_script1, hint1) = Self::hinted_check_chord_line(t, q, alpha);
+        let (hinted_script2, hint2) = Self::hinted_add(t.x, q.x, alpha);
+        let (hinted_script3, hint3) = Self::hinted_check_tangent_line(t, alpha);
+
+        let script = script! {           // tx ty qx qy
+            { G1Affine::is_zero_keep_element() }
+            OP_IF
+                { G1Affine::drop() }
+            OP_ELSE
+                { G1Affine::roll(2) }
+                { G1Affine::is_zero_keep_element() }
+                OP_IF
+                    { G1Affine::drop() }
+                OP_ELSE                                    // qx qy tx ty
+                    { Fq::equal_keep_elements(3, 1) }      // t == q or t == -q
+                    OP_DUP
+                    OP_TOALTSTACK
+                    OP_TOALTSTACK
+                    { Fq::equal_keep_elements(2, 0) }
+                    OP_NOT
+                    OP_FROMALTSTACK
+                    OP_BOOLAND
+                    OP_IF                                  // case: t == -q
+                        OP_FROMALTSTACK OP_DROP
+                        { G1Affine::drop() }
+                        { G1Affine::drop() }
+                        { G1Affine::identity() }
+                    OP_ELSE                                // case: t != -q
+                        for _ in 0..Fq::N_LIMBS {
+                            OP_DEPTH OP_1SUB OP_ROLL
+                        }
+                        { Fq::check_validity_and_keep_element() }
+                        for _ in 0..Fq::N_LIMBS {
+                            OP_DEPTH OP_1SUB OP_ROLL
+                        }                                  // qx qy tx ty c3 c4
+                        { Fq::check_validity_and_keep_element() }
+                        { Fq::copy(1) }                    // qx qy tx ty c3 c4 c3
+                        { Fq::copy(1) }                    // qx qy tx ty c3 c4 c3 c4
+                        { Fq::copy(5) }                    // qx qy tx ty c3 c4 c3 c4 tx
+                        { Fq::roll(5) }                    // qx qy tx c3 c4 c3 c4 tx ty
+                        OP_FROMALTSTACK
+                        OP_IF                              // case: t == q
+                            { hinted_script3 }             // qx qy tx c3 c4 is_tangent_line_correct
+                            OP_VERIFY                      // qx qy tx c3 c4
+                            { Fq::roll(3) }                // qx tx c3 c4 qy
+                            { Fq::drop() }                 // qx tx c3 c4
+                        OP_ELSE                            // case: general case
+                            { Fq::copy(8) }                // qx qy tx c3 c4 c3 c4 tx ty qx
+                            { Fq::roll(8) }                // qx tx c3 c4 c3 c4 tx ty qx qy
+                            { hinted_script1 }             // qx tx c3 c4 0/1
+                            OP_VERIFY                      // qx tx c3 c4
+                        OP_ENDIF
+                        { Fq::roll(2) }                    // qx c3 c4 tx
+                        { Fq::roll(3) }                    // c3 c4 tx qx
+                        { hinted_script2 }                 // x' y'
+                    OP_ENDIF
+                OP_ENDIF
+            OP_ENDIF
+        };
+
+        if t.is_zero() || q.is_zero() {
+            // no hint
+        } else if t == -q {
+            // no hint
+        } else if t == q {
+            hints.push(Hint::Fq(alpha));
+            hints.push(Hint::Fq(-bias));
+            hints.extend(hint3);
+            hints.extend(hint2);
+        } else {
+            hints.push(Hint::Fq(alpha));
+            hints.push(Hint::Fq(-bias));
+            hints.extend(hint1);
+            hints.extend(hint2);
+        };
 
         (script, hints)
     }
@@ -317,9 +436,11 @@ impl G1Affine {
                 for _ in 0..Fq::N_LIMBS {
                     OP_DEPTH OP_1SUB OP_ROLL
                 }                                        // -bias, ...,  x, y, alpha
+                { Fq::check_validity_and_keep_element() }
                 for _ in 0..Fq::N_LIMBS {
                     OP_DEPTH OP_1SUB OP_ROLL
                 }                                        // x, y, alpha, -bias
+                { Fq::check_validity_and_keep_element() }
                 { Fq::copy(1) }                          // x, y, alpha, -bias, alpha
                 { Fq::copy(1) }                          // x, y, alpha, -bias, alpha, -bias
                 { Fq::copy(5) }                          // x, y, alpha, -bias, alpha, -bias, x
@@ -346,18 +467,17 @@ impl G1Affine {
         let (y_sq, y_sq_hint) = Fq::hinted_square(y);
 
         let mut hints = Vec::new();
+        hints.extend(y_sq_hint);
         hints.extend(x_sq_hint);
         hints.extend(x_cu_hint);
-        hints.extend(y_sq_hint);
         let scr = script! {
+            { y_sq }
             { Fq::copy(1) }
             { x_sq }
             { Fq::roll(2) }
             { x_cu }
             { Fq::push_hex("3") }
             { Fq::add(1, 0) }
-            { Fq::roll(1) }
-            { y_sq }
             { Fq::equal(1, 0) }
         };
         (scr, hints)
@@ -399,8 +519,7 @@ impl G1Affine {
         }
     }
 
-    pub fn roll(mut a: u32) -> Script {
-        a *= 2;
+    pub fn roll(a: u32) -> Script {
         script! {
             { Fq::roll(a + 1) }
             { Fq::roll(a + 1) }
@@ -414,72 +533,26 @@ impl G1Affine {
 ///      tmul hints, p.y_inverse
 /// output on stack:
 ///      x' = -p.x / p.y
-pub fn hinted_x_from_eval_point(
-    p: ark_bn254::G1Affine,
-    py_inv: ark_bn254::Fq,
-) -> (Script, Vec<Hint>) {
-    let mut hints = Vec::new();
-
-    let (hinted_script1, hint1) = Fq::hinted_mul(1, p.y, 0, py_inv);
-    let (hinted_script2, hint2) = Fq::hinted_mul(1, py_inv, 0, -p.x);
-    let script = script! {   // Stack: [hints, pyd, px, py]
-        {Fq::copy(2)}                        // Stack: [hints, pyd, px, py, pyd]
-        {hinted_script1}
-        {Fq::push_one()}
-        {Fq::equalverify(1, 0)}              // Stack: [hints, pyd, px]
-        {Fq::neg(0)}                        // Stack: [hints, pyd, -px]
-        {hinted_script2}
-    };
-    hints.extend(hint1);
-    hints.extend(hint2);
-    (script, hints)
-}
-
-/// input of func (params):
-///      p.y
-/// Input Hints On Stack
-///      tmul hints, p.y_inverse
-/// output on stack:
-///      []
-pub fn hinted_y_from_eval_point(py: ark_bn254::Fq, py_inv: ark_bn254::Fq) -> (Script, Vec<Hint>) {
-    let mut hints = Vec::new();
-
-    let (hinted_script1, hint1) = Fq::hinted_mul(1, py_inv, 0, py);
-    let script = script! {// [hints,..., pyd_calc, py]
-        {hinted_script1}
-        {Fq::push_one()}
-        {Fq::equalverify(1,0)}
-    };
-    hints.extend(hint1);
-
-    (script, hints)
-}
-
-/// input of func (params):
-///      p.x, p.y
-/// Input Hints On Stack
-///      tmul hints, p.y_inverse
-/// output on stack:
-///      x' = -p.x / p.y
 ///      y' = 1 / p.y
 pub fn hinted_from_eval_point(p: ark_bn254::G1Affine) -> (Script, Vec<Hint>) {
     let mut hints = Vec::new();
 
     let py_inv = p.y().unwrap().inverse().unwrap();
-
-    let (hinted_script1, hint1) = hinted_y_from_eval_point(p.y, py_inv);
-    let (hinted_script2, hint2) = hinted_x_from_eval_point(p, py_inv);
+    let (hinted_script1, hint1) = Fq::hinted_mul(1, p.y, 0, py_inv);
+    let (hinted_script2, hint2) = Fq::hinted_mul(1, py_inv, 0, -p.x);
     let script = script! {
 
         // [hints, yinv, x, y]
         {Fq::copy(2)}
-        {Fq::copy(1)}
 
         {hinted_script1}
+        {Fq::push_one()}
+        {Fq::equalverify(1,0)}
 
-        // [hints, yinv, x, y]
-        {Fq::copy(2)}
+        // [hints, yinv, x]
+        {Fq::copy(1)}
         {Fq::toaltstack()}
+        {Fq::neg(0)}
         {hinted_script2}
         {Fq::fromaltstack()}
     };
@@ -494,8 +567,8 @@ pub fn hinted_from_eval_points(p: ark_bn254::G1Affine) -> (Script, Vec<Hint>) {
 
     let py_inv = p.y().unwrap().inverse().unwrap();
 
-    let (hinted_script1, hint1) = hinted_y_from_eval_point(p.y, py_inv);
-    let (hinted_script2, hint2) = hinted_x_from_eval_point(p, py_inv);
+    let (hinted_script1, hint1) = Fq::hinted_mul(1, p.y, 0, py_inv);
+    let (hinted_script2, hint2) = Fq::hinted_mul(1, py_inv, 0, -p.x);
 
     let script = script! {
         // [yinv, hints,.., x, y]
@@ -503,14 +576,19 @@ pub fn hinted_from_eval_points(p: ark_bn254::G1Affine) -> (Script, Vec<Hint>) {
         for _ in 0..Fq::N_LIMBS {
             OP_DEPTH OP_1SUB OP_ROLL
         }
+        { Fq::check_validity_and_keep_element() }
         {Fq2::fromaltstack()}
         // [hints, yinv, x, y]
         {Fq::copy(2)}
-        {Fq::copy(1)}
+
         {hinted_script1}
-        // [hints, yinv, x, y]
-        {Fq::copy(2)}
+        {Fq::push_one()}
+        {Fq::equalverify(1,0)}
+
+        // [hints, yinv, x]
+        {Fq::copy(1)}
         {Fq::toaltstack()}
+        {Fq::neg(0)}
         {hinted_script2}
         {Fq::fromaltstack()}
     };
@@ -528,7 +606,6 @@ mod test {
     use crate::bn254::fq::Fq;
     use crate::bn254::fq2::Fq2;
     use crate::bn254::g1::G1Affine;
-    use crate::bn254::g2::G2Affine;
 
     use super::*;
     use crate::{treepp::*, ExecuteInfo};
@@ -561,14 +638,14 @@ mod test {
 
         assert_eq!(a, recovered_a);
 
-        let b = ark_bn254::G2Affine::rand(&mut prng);
+        let b = ark_bn254::G1Affine::identity();
         let script = script! {
-            {G2Affine::push(b)}
+            {G1Affine::push(b)}
         };
 
         let res = execute_script(script);
         let witness = extract_witness_from_stack(res);
-        let recovered_b = G2Affine::read_from_stack(witness);
+        let recovered_b = G1Affine::read_from_stack(witness);
 
         assert_eq!(b, recovered_b);
     }
@@ -701,48 +778,66 @@ mod test {
     }
 
     #[test]
-    fn test_g1_affine_hinted_check_add() {
-        //println!("G1.hinted_add: {} bytes", G1Affine::check_add().len());
+    fn test_g1_affine_hinted_check_add_prevent_degenerate() {
         let mut prng = ChaCha20Rng::seed_from_u64(0);
         let t = ark_bn254::G1Affine::rand(&mut prng);
         let q = ark_bn254::G1Affine::rand(&mut prng);
-        let alpha = (t.y - q.y) / (t.x - q.x);
-        // -bias
-        let bias_minus = alpha * t.x - t.y;
+        let r = (t + q).into_affine();
 
-        let x = alpha.square() - t.x - q.x;
-        let y = bias_minus - alpha * x;
-
-        let (hinted_check_add, hints) = G1Affine::hinted_check_add(t, q);
+        let (hinted_check_add, hints) = G1Affine::hinted_check_add_prevent_degenerate(t, q);
 
         let script = script! {
             for hint in hints {
                 { hint.push() }
             }
-            { Fq::push(t.x) }
-            { Fq::push(t.y) }
-            { Fq::push(q.x) }
-            { Fq::push(q.y) }
+            { G1Affine::push(t) }
+            { G1Affine::push(q) }
             { hinted_check_add.clone() }
-            // [x']
-            { Fq::push(y) }
-            // [x', y', y]
-            { Fq::equalverify(1,0) }
-            // [x']
-            { Fq::push(x) }
-            // [x', x]
-            { Fq::equalverify(1,0) }
-            // []
+            { G1Affine::push(r) }
+            { G1Affine::equalverify() }
             OP_TRUE
-            // [OP_TRUE]
         };
         let exec_result = execute_script(script);
         assert!(exec_result.success);
         println!(
-            "hinted_add_line: {} @ {} stack",
+            "hinted_check_add_prevent_degenerate: {} @ {} stack",
             hinted_check_add.len(),
             exec_result.stats.max_nb_stack_items
         );
+    }
+
+    #[test]
+    fn test_g1_affine_hinted_check_add() {
+        let mut prng = ChaCha20Rng::seed_from_u64(0);
+        let t = ark_bn254::G1Affine::rand(&mut prng);
+        let q = ark_bn254::G1Affine::rand(&mut prng);
+        let r = (t + q).into_affine();
+        let tt = (t + t).into_affine();
+        let negt = -t;
+        let z = ark_bn254::G1Affine::zero();
+
+        for (t, q, r) in [(t, q, r), (t, t, tt), (t, negt, z), (t, z, t)] {
+            let (hinted_check_add, hints) = G1Affine::hinted_check_add(t, q);
+
+            let script = script! {
+                for hint in hints {
+                    { hint.push() }
+                }
+                { G1Affine::push(t) }
+                { G1Affine::push(q) }
+                { hinted_check_add.clone() }
+                { G1Affine::push(r) }
+                { G1Affine::equalverify() }
+                OP_TRUE
+            };
+            let exec_result = execute_script(script);
+            assert!(exec_result.success);
+            println!(
+                "hinted_check_add: {} @ {} stack",
+                hinted_check_add.len(),
+                exec_result.stats.max_nb_stack_items
+            );
+        }
     }
 
     #[test]
@@ -860,47 +955,6 @@ mod test {
             { Fq::push_u32_le(&BigUint::from(-p.x / p.y).to_u32_digits()) } // expected output
             { Fq::push_u32_le(&BigUint::from(pyinv).to_u32_digits()) }
             { Fq2::equalverify() }
-            OP_TRUE
-        };
-        let exec_result = execute_script(script);
-        assert!(exec_result.success);
-    }
-
-    #[test]
-    fn test_hintedx_from_eval_point() {
-        let mut prng = ChaCha20Rng::seed_from_u64(0);
-        let p = ark_bn254::G1Affine::rand(&mut prng);
-        let (ell_by_constant_affine_script, hints) =
-            hinted_x_from_eval_point(p, p.y.inverse().unwrap());
-        let script = script! {
-            for tmp in hints {
-                { tmp.push() }
-            }
-            { Fq::push_u32_le(&BigUint::from(p.y.inverse().unwrap()).to_u32_digits()) }
-            { Fq::push_u32_le(&BigUint::from(p.x).to_u32_digits()) }
-            { Fq::push_u32_le(&BigUint::from(p.y).to_u32_digits()) }
-            { ell_by_constant_affine_script.clone() }
-            { Fq::push_u32_le(&BigUint::from(-p.x / p.y).to_u32_digits()) }
-            {Fq::equalverify(1,0)}
-            OP_TRUE
-        };
-        let exec_result = execute_script(script);
-        assert!(exec_result.success);
-    }
-
-    #[test]
-    fn test_hintedy_from_eval_point() {
-        let mut prng = ChaCha20Rng::seed_from_u64(0);
-        let p = ark_bn254::G1Affine::rand(&mut prng);
-        let (ell_by_constant_affine_script, hints) =
-            hinted_y_from_eval_point(p.y, p.y.inverse().unwrap());
-        let script = script! {
-            for tmp in hints {
-                { tmp.push() }
-            }
-            { Fq::push_u32_le(&BigUint::from(p.y.inverse().unwrap()).to_u32_digits()) }
-            { Fq::push_u32_le(&BigUint::from(p.y).to_u32_digits()) }
-            { ell_by_constant_affine_script.clone() }
             OP_TRUE
         };
         let exec_result = execute_script(script);

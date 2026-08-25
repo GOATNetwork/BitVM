@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+#![allow(dead_code)]
 use std::ops::Neg;
 
 use crate::bn254::ell_coeffs::AffinePairing;
@@ -11,29 +13,26 @@ use crate::chunk::g16_runner_core::InputProof;
 use crate::chunk::g16_runner_core::InputProofRaw;
 use crate::chunk::g16_runner_core::PublicParams;
 use crate::groth16::offchain_checker::compute_c_wi;
-use crate::signatures::wots_api::{wots256, wots_hash, SignatureImpl};
 use crate::treepp::Script;
 use ark_bn254::Bn254;
 use ark_ec::bn::Bn;
 use ark_ec::{AffineRepr, CurveGroup};
 use ark_ff::Field;
+use bitcoin::ScriptBuf;
 use bitcoin_script::script;
 
-use crate::{bn254::utils::Hint, execute_script};
-
 use super::api::{Assertions, PublicKeys, Signatures, NUM_HASH, NUM_PUBS, NUM_TAPS, NUM_U256};
+use super::elements::CompressedStateObject;
 use super::g16_runner_utils::{ScriptType, Segment};
 use super::wrap_hasher::BLAKE3_HASH_LENGTH;
-use super::{
-    elements::CompressedStateObject,
-    wrap_wots::{wots256_sig_to_byte_array, wots_hash_sig_to_byte_array},
-};
+use crate::signatures::{CompactWots, Wots, Wots16, Wots32};
+use crate::{bn254::utils::Hint, execute_script};
 
 #[derive(Debug, Clone)]
 #[allow(clippy::large_enum_variant)]
 enum SigData {
-    Sig256(wots256::Signature),
-    SigHash(wots_hash::Signature),
+    Wots16(<Wots16 as Wots>::Signature),
+    Wots32(<Wots32 as Wots>::Signature),
 }
 
 // Segments are collected in the order [PublicInputSegment, ProofInputSegments, IntermediateHashSegments, FinalScriptSegment]
@@ -303,26 +302,29 @@ pub(crate) fn get_signature_from_assertion(assn: Assertions, secrets: Vec<String
     // sign and return Signatures
     let (ps, fs, hs) = (assn.0, assn.1, assn.2);
 
-    let mut psig: Vec<wots256::Signature> = vec![];
+    let mut psig: Vec<<Wots32 as Wots>::Signature> = vec![];
     for i in 0..NUM_PUBS {
-        let psi = wots256::get_signature(secrets[i].as_str(), &ps[i]);
+        let secret = Wots32::secret_from_str(secrets[i].as_str());
+        let psi = Wots32::sign(&secret, &ps[i]);
         psig.push(psi);
     }
-    let psig: Box<[wots256::Signature; NUM_PUBS]> = Box::new(psig.try_into().unwrap());
+    let psig: Box<[<Wots32 as Wots>::Signature; NUM_PUBS]> = Box::new(psig.try_into().unwrap());
 
-    let mut fsig: Vec<wots256::Signature> = vec![];
+    let mut fsig: Vec<<Wots32 as Wots>::Signature> = vec![];
     for i in 0..fs.len() {
-        let fsi = wots256::get_signature(secrets[i + NUM_PUBS].as_str(), &fs[i]);
+        let secret = Wots32::secret_from_str(secrets[i + NUM_PUBS].as_str());
+        let fsi = Wots32::sign(&secret, &fs[i]);
         fsig.push(fsi);
     }
-    let fsig: Box<[wots256::Signature; NUM_U256]> = Box::new(fsig.try_into().unwrap());
+    let fsig: Box<[<Wots32 as Wots>::Signature; NUM_U256]> = Box::new(fsig.try_into().unwrap());
 
-    let mut hsig: Vec<wots_hash::Signature> = vec![];
+    let mut hsig: Vec<<Wots16 as Wots>::Signature> = vec![];
     for i in 0..hs.len() {
-        let hsi = wots_hash::get_signature(secrets[i + NUM_PUBS + NUM_U256].as_str(), &hs[i]);
+        let secret = Wots16::secret_from_str(secrets[i + NUM_PUBS + NUM_U256].as_str());
+        let hsi = Wots16::sign(&secret, &hs[i]);
         hsig.push(hsi);
     }
-    let hsig: Box<[wots_hash::Signature; NUM_HASH]> = Box::new(hsig.try_into().unwrap());
+    let hsig: Box<[<Wots16 as Wots>::Signature; NUM_HASH]> = Box::new(hsig.try_into().unwrap());
 
     (psig, fsig, hsig)
 }
@@ -333,24 +335,21 @@ pub(crate) fn get_assertions_from_signature(signed_asserts: Signatures) -> Asser
     println!("get_assertions_from_signature");
     let mut ks: Vec<[u8; 32]> = vec![];
     for i in 0..NUM_PUBS {
-        let nibs = wots256_sig_to_byte_array(signed_asserts.0[i]);
-        let nibs: [u8; 32] = nibs.try_into().unwrap();
+        let nibs = Wots32::signature_to_message(&signed_asserts.0[i]);
         ks.push(nibs);
     }
     let ks: [[u8; 32]; NUM_PUBS] = ks.try_into().unwrap();
 
     let mut numfqs: Vec<[u8; 32]> = vec![];
     for i in 0..NUM_U256 {
-        let nibs = wots256_sig_to_byte_array(signed_asserts.1[i]);
-        let nibs: [u8; 32] = nibs.try_into().unwrap();
+        let nibs = Wots32::signature_to_message(&signed_asserts.1[i]);
         numfqs.push(nibs);
     }
     let num_fqs: [[u8; 32]; NUM_U256] = numfqs.try_into().unwrap();
 
     let mut numhashes: Vec<[u8; BLAKE3_HASH_LENGTH]> = vec![];
     for i in 0..NUM_HASH {
-        let nibs = wots_hash_sig_to_byte_array(signed_asserts.2[i]);
-        let nibs: [u8; BLAKE3_HASH_LENGTH] = nibs.try_into().unwrap();
+        let nibs = Wots16::signature_to_message(&signed_asserts.2[i]);
         numhashes.push(nibs);
     }
 
@@ -393,7 +392,7 @@ fn utils_execute_chunked_g16(
     aux_hints: Vec<Vec<Hint>>,
     bc_hints: Vec<Script>,
     segments: &[Segment],
-    disprove_scripts: &[Script; NUM_TAPS],
+    disprove_scripts: &[ScriptBuf; NUM_TAPS],
 ) -> Option<(usize, Script)> {
     let mut tap_script_index = 0;
     for i in 0..aux_hints.len() {
@@ -406,10 +405,9 @@ fn utils_execute_chunked_g16(
             }
             {bc_hints[i].clone()}
         };
-        let total_script = script! {
-            {hint_script.clone()}
-            {disprove_scripts[tap_script_index].clone()}
-        };
+        let total_script = hint_script
+            .clone()
+            .push_script(disprove_scripts[tap_script_index].clone());
         let exec_result = execute_script(total_script);
         if exec_result.final_stack.len() > 1 {
             for i in 0..exec_result.final_stack.len() {
@@ -420,6 +418,14 @@ fn utils_execute_chunked_g16(
             if exec_result.final_stack.len() != 1 {
                 println!("final {:?}", i);
                 println!("final {:?}", segments[i].scr_type);
+                panic!();
+            }
+            if exec_result.remaining_script != "OP_PUSHNUM_1" && exec_result.remaining_script != ""
+            {
+                println!(
+                    "Script terminated early {:?} {:?}",
+                    exec_result.remaining_script, segments[i].scr_type
+                );
                 panic!();
             }
         } else {
@@ -433,6 +439,56 @@ fn utils_execute_chunked_g16(
         tap_script_index += 1;
     }
     None
+}
+
+/// This is a duplicate of [`utils_execute_chunked_g16`], just to analyze worst case scenarios
+fn utils_analyze_largest_segments(
+    aux_hints: Vec<Vec<Hint>>,
+    bc_hints: Vec<Script>,
+    segments: &[Segment],
+    disprove_scripts: &[ScriptBuf; NUM_TAPS],
+) {
+    let mut max_script_size = 0;
+    let mut max_script_size_index = 0;
+    let mut max_stack_depth = 0;
+    let mut max_stack_depth_index = 0;
+    let mut tap_script_index = 0;
+    for i in 0..aux_hints.len() {
+        if segments[i].scr_type == ScriptType::NonDeterministic {
+            continue;
+        }
+        let hint_script = script! {
+            for h in &aux_hints[i] {
+                {h.push()}
+            }
+            {bc_hints[i].clone()}
+        };
+        let total_script = hint_script
+            .clone()
+            .push_script(disprove_scripts[tap_script_index].clone());
+        let script_size = total_script.len();
+        if script_size > max_script_size {
+            max_script_size = script_size;
+            max_script_size_index = tap_script_index;
+        }
+
+        let exec_result = execute_script(total_script);
+        let stack_depth = exec_result.stats.max_nb_stack_items;
+        if stack_depth > max_stack_depth {
+            max_stack_depth = stack_depth;
+            max_stack_depth_index = tap_script_index;
+        }
+        tap_script_index += 1;
+    }
+
+    println!(
+        "Max script size with the current VK is {} at index {}",
+        max_script_size, max_script_size_index
+    );
+    println!(
+        "(This shouldn't change with the VK) Max stack depth used is {} at index {}",
+        max_stack_depth, max_stack_depth_index
+    );
 }
 
 pub(crate) fn execute_script_from_assertion(
@@ -487,10 +543,10 @@ pub(crate) fn execute_script_from_assertion(
     }
 
     // collect partial scripts
-    let partial_scripts: Vec<Script> = partial_scripts_from_segments(segments)
+    let partial_scripts: Vec<ScriptBuf> = partial_scripts_from_segments(segments)
         .into_iter()
         .collect();
-    let partial_scripts: [Script; NUM_TAPS] = partial_scripts.try_into().unwrap();
+    let partial_scripts: [ScriptBuf; NUM_TAPS] = partial_scripts.try_into().unwrap();
     // collect witness
     let mul_hints = utils_collect_mul_hints_per_segment(segments);
     let bc_hints = collect_wots_msg_as_witness_per_segment(segments, assts);
@@ -502,7 +558,7 @@ pub(crate) fn execute_script_from_assertion(
 pub(crate) fn execute_script_from_signature(
     segments: &[Segment],
     signed_assts: Signatures,
-    disprove_scripts: &[Script; NUM_TAPS],
+    disprove_scripts: &[ScriptBuf; NUM_TAPS],
 ) -> Option<(usize, Script)> {
     // if there is a disprove script; with locking script; i can use bitcom witness
     // segments and signatures
@@ -513,17 +569,17 @@ pub(crate) fn execute_script_from_signature(
         let scalar_sigs: Vec<SigData> = signed_asserts
             .0
             .iter()
-            .map(|f| SigData::Sig256(*f))
+            .map(|f| SigData::Wots32(*f))
             .collect();
         let felts_sigs: Vec<SigData> = signed_asserts
             .1
             .iter()
-            .map(|f| SigData::Sig256(*f))
+            .map(|f| SigData::Wots32(*f))
             .collect();
         let hash_sigs: Vec<SigData> = signed_asserts
             .2
             .iter()
-            .map(|f| SigData::SigHash(*f))
+            .map(|f| SigData::Wots16(*f))
             .collect();
         let mut bitcom_sig_arr = vec![];
         bitcom_sig_arr.extend_from_slice(&scalar_sigs);
@@ -552,8 +608,12 @@ pub(crate) fn execute_script_from_signature(
             for index in index_of_bitcommitted_msg {
                 let sig_data = &bitcom_sig_arr[index as usize];
                 let sig_preimage = match sig_data {
-                    SigData::SigHash(signature) => signature.to_compact_script(),
-                    SigData::Sig256(signature) => signature.to_compact_script(),
+                    SigData::Wots16(signature) => Wots16::compact_signature_to_raw_witness(
+                        &Wots16::signature_to_compact_signature(signature),
+                    ),
+                    SigData::Wots32(signature) => Wots32::compact_signature_to_raw_witness(
+                        &Wots32::signature_to_compact_signature(signature),
+                    ),
                 };
                 sig_preimages = script! {
                     {sig_preimages}
@@ -573,20 +633,101 @@ pub(crate) fn execute_script_from_signature(
     utils_execute_chunked_g16(mul_hints, bc_hints, segments, disprove_scripts)
 }
 
+/// This is a duplicate of [`execute_script_from_signature`], just to analyze worst case scenarios
+pub fn analyze_largest_segments_from_signatures(
+    segments: &[Segment],
+    signed_assts: Signatures,
+    disprove_scripts: &[ScriptBuf; NUM_TAPS],
+) {
+    // if there is a disprove script; with locking script; i can use bitcom witness
+    // segments and signatures
+    fn collect_wots_sig_as_witness_per_segment(
+        segments: &[Segment],
+        signed_asserts: Signatures,
+    ) -> Vec<Script> {
+        let scalar_sigs: Vec<SigData> = signed_asserts
+            .0
+            .iter()
+            .map(|f| SigData::Wots32(*f))
+            .collect();
+        let felts_sigs: Vec<SigData> = signed_asserts
+            .1
+            .iter()
+            .map(|f| SigData::Wots32(*f))
+            .collect();
+        let hash_sigs: Vec<SigData> = signed_asserts
+            .2
+            .iter()
+            .map(|f| SigData::Wots16(*f))
+            .collect();
+        let mut bitcom_sig_arr = vec![];
+        bitcom_sig_arr.extend_from_slice(&scalar_sigs);
+        bitcom_sig_arr.extend_from_slice(&felts_sigs);
+        bitcom_sig_arr.extend_from_slice(&hash_sigs);
+
+        let mut bitcom_sig_as_witness = vec![];
+
+        for i in 0..segments.len() {
+            let mut index_of_bitcommitted_msg: Vec<u32> = vec![];
+
+            let seg = &segments[i];
+            let sec_in: Vec<u32> = seg.parameter_ids.iter().rev().map(|(k, _)| *k).collect();
+            index_of_bitcommitted_msg.extend_from_slice(&sec_in);
+
+            if !seg.scr_type.is_final_script() {
+                // final script doesn't have output
+                let sec_out = (
+                    seg.id,
+                    segments[seg.id as usize].result.0.output_is_field_element(),
+                );
+                index_of_bitcommitted_msg.push(sec_out.0);
+            }
+
+            let mut sig_preimages = script! {};
+            for index in index_of_bitcommitted_msg {
+                let sig_data = &bitcom_sig_arr[index as usize];
+                let sig_preimage = match sig_data {
+                    SigData::Wots16(signature) => Wots16::compact_signature_to_raw_witness(
+                        &Wots16::signature_to_compact_signature(signature),
+                    ),
+                    SigData::Wots32(signature) => Wots32::compact_signature_to_raw_witness(
+                        &Wots32::signature_to_compact_signature(signature),
+                    ),
+                };
+                sig_preimages = script! {
+                    {sig_preimages}
+                    {sig_preimage}
+                };
+            }
+            bitcom_sig_as_witness.push(sig_preimages);
+        }
+        bitcom_sig_as_witness
+    }
+
+    // collect witness
+    let mul_hints = utils_collect_mul_hints_per_segment(segments);
+    let bc_hints = collect_wots_sig_as_witness_per_segment(segments, signed_assts);
+
+    utils_analyze_largest_segments(mul_hints, bc_hints, segments, disprove_scripts);
+}
+
 #[allow(clippy::needless_range_loop)]
 pub(crate) fn get_pubkeys(secret_key: Vec<String>) -> PublicKeys {
     let mut pubins = vec![];
     for i in 0..NUM_PUBS {
-        pubins.push(wots256::generate_public_key(secret_key[i].as_str()));
+        let secret = Wots32::secret_from_str(secret_key[i].as_str());
+        pubins.push(Wots32::generate_public_key(&secret));
     }
     let mut fq_arr = vec![];
     for i in 0..NUM_U256 {
-        let p256 = wots256::generate_public_key(secret_key[i + NUM_PUBS].as_str());
+        let secret = Wots32::secret_from_str(secret_key[i + NUM_PUBS].as_str());
+        let p256 = Wots32::generate_public_key(&secret);
         fq_arr.push(p256);
     }
     let mut h_arr = vec![];
     for i in 0..NUM_HASH {
-        let phash = wots_hash::generate_public_key(secret_key[i + NUM_PUBS + NUM_U256].as_str());
+        let secret = Wots16::secret_from_str(secret_key[i + NUM_PUBS + NUM_U256].as_str());
+        let phash = Wots16::generate_public_key(&secret);
         h_arr.push(phash);
     }
     let wotspubkey: PublicKeys = (
@@ -601,6 +742,7 @@ pub(crate) fn get_pubkeys(secret_key: Vec<String>) -> PublicKeys {
 mod test {
     use crate::chunk::api_compiletime_utils::append_bitcom_locking_script_to_partial_scripts;
     use ark_serialize::CanonicalDeserialize;
+    use bitcoin::ScriptBuf;
 
     use super::*;
 
@@ -713,12 +855,10 @@ mod test {
             .collect::<Vec<String>>();
         let pubkeys = get_pubkeys(secrets);
         println!("execute_script_from_signature");
-        let partial_scripts: Vec<Script> = partial_scripts_from_segments(&segments)
-            .into_iter()
-            .collect();
+        let partial_scripts: Vec<ScriptBuf> = partial_scripts_from_segments(&segments);
         let disprove_scripts =
             append_bitcom_locking_script_to_partial_scripts(pubkeys, partial_scripts.to_vec());
-        let disprove_scripts: [Script; NUM_TAPS] = disprove_scripts.try_into().unwrap();
+        let disprove_scripts: [ScriptBuf; NUM_TAPS] = disprove_scripts.try_into().unwrap();
 
         let res = execute_script_from_signature(&segments, signed_assts, &disprove_scripts);
         assert!(res.is_none());

@@ -1,18 +1,22 @@
 use bitcoin::{
-    absolute, consensus, key::Keypair, Amount, Network, PublicKey, ScriptBuf, Sequence,
-    TapSighashType, Transaction, TxIn, TxOut, Witness,
+    absolute, consensus, Address, Amount, ScriptBuf, TapSighashType, Transaction, TxOut,
 };
+use musig2::{errors::SigningError, AggNonce, PartialSignature, SecNonce};
 use serde::{Deserialize, Serialize};
-use std::cmp::Ordering;
 
-use crate::{connectors::base::TaprootConnector, transactions::base::DUST_AMOUNT};
-
-use super::{
-    super::{connectors::connector_a::ConnectorA, contexts::operator::OperatorContext, scripts::*},
-    base::*,
-    pre_signed::*,
-    signing::populate_p2wsh_witness,
+use crate::{
+    connectors::base::TaprootConnector,
+    contexts::{base::BaseContext, verifier::VerifierContext},
+    error::Error,
+    transactions::{
+        signing::push_taproot_leaf_script_and_control_block_to_witness,
+        signing_musig2::{
+            generate_taproot_aggregated_signature, generate_taproot_partial_signature,
+        },
+    },
 };
+
+use super::{super::connectors::connector_a::ConnectorA, base::*, pre_signed::*};
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct ChallengeTransaction {
@@ -21,56 +25,40 @@ pub struct ChallengeTransaction {
     #[serde(with = "consensus::serde::With::<consensus::serde::Hex>")]
     prev_outs: Vec<TxOut>,
     prev_scripts: Vec<ScriptBuf>,
-    input_amount_crowdfunding: Amount,
+    pub challenge_amount: Amount,
 }
 
 impl PreSignedTransaction for ChallengeTransaction {
-    fn tx(&self) -> &Transaction { &self.tx }
+    fn tx(&self) -> &Transaction {
+        &self.tx
+    }
 
-    fn tx_mut(&mut self) -> &mut Transaction { &mut self.tx }
+    fn tx_mut(&mut self) -> &mut Transaction {
+        &mut self.tx
+    }
 
-    fn prev_outs(&self) -> &Vec<TxOut> { &self.prev_outs }
+    fn prev_outs(&self) -> &Vec<TxOut> {
+        &self.prev_outs
+    }
 
-    fn prev_scripts(&self) -> &Vec<ScriptBuf> { &self.prev_scripts }
+    fn prev_scripts(&self) -> &Vec<ScriptBuf> {
+        &self.prev_scripts
+    }
 }
 
 impl ChallengeTransaction {
-    pub fn new(
-        context: &OperatorContext,
-        connector_a: &ConnectorA,
-        input_0: Input,
-        input_amount_crowdfunding: Amount,
-    ) -> Self {
-        let mut this = Self::new_for_validation(
-            context.network,
-            &context.operator_public_key,
-            connector_a,
-            input_0,
-            input_amount_crowdfunding,
-        );
-
-        this.sign_input_0(context, connector_a);
-
-        this
-    }
-
     pub fn new_for_validation(
-        network: Network,
-        operator_public_key: &PublicKey,
         connector_a: &ConnectorA,
         input_0: Input,
-        input_amount_crowdfunding: Amount,
+        challenge_amount: Amount,
+        operator_address: &Address,
     ) -> Self {
         let input_0_leaf = 1;
         let _input_0 = connector_a.generate_taproot_leaf_tx_in(input_0_leaf, &input_0);
 
-        let total_output_amount =
-            input_0.amount + input_amount_crowdfunding - Amount::from_sat(MIN_RELAY_FEE_CHALLENGE);
-
         let _output_0 = TxOut {
-            value: total_output_amount,
-            script_pubkey: generate_pay_to_pubkey_script_address(network, operator_public_key)
-                .script_pubkey(),
+            value: challenge_amount,
+            script_pubkey: operator_address.script_pubkey(),
         };
 
         ChallengeTransaction {
@@ -91,88 +79,104 @@ impl ChallengeTransaction {
                 connector_a.generate_taproot_leaf_script(input_0_leaf),
                 // input 1's script will be added later
             ],
-            input_amount_crowdfunding,
+            challenge_amount,
         }
     }
 
-    fn sign_input_0(&mut self, context: &OperatorContext, connector_a: &ConnectorA) {
-        pre_sign_taproot_input_default(
-            self,
-            0,
-            TapSighashType::SinglePlusAnyoneCanPay,
-            connector_a.generate_taproot_spend_info(),
-            &vec![&context.operator_keypair],
+    fn sign_input_0_musig2(
+        &mut self,
+        context: &VerifierContext,
+        sec_nonce: &SecNonce,
+        agg_nonce: &AggNonce,
+    ) -> Result<PartialSignature, SigningError> {
+        let input_index = 0;
+        let sighash_type = TapSighashType::SinglePlusAnyoneCanPay;
+        generate_taproot_partial_signature(
+            &context,
+            self.tx(),
+            sec_nonce,
+            agg_nonce,
+            input_index,
+            self.prev_outs(),
+            &self.prev_scripts()[input_index],
+            sighash_type,
+        )
+    }
+
+    fn push_input_0_signature(
+        &mut self,
+        connector_a: &ConnectorA,
+        input_0_sig: bitcoin::taproot::Signature,
+    ) {
+        let input_index = 0;
+        let script = self.prev_scripts()[input_index].clone();
+        let spend_info = connector_a.generate_taproot_spend_info();
+        let tx_mut = self.tx_mut();
+        // Push signature to witness
+        tx_mut.input[input_index]
+            .witness
+            .push(input_0_sig.serialize());
+
+        // Push script + control block
+        push_taproot_leaf_script_and_control_block_to_witness(
+            tx_mut,
+            input_index,
+            &spend_info,
+            &script,
         );
     }
 
-    pub fn pre_sign(&mut self, context: &OperatorContext, connector_a: &ConnectorA) {
-        self.sign_input_0(context, connector_a)
-    }
-
-    // allows for aggregating multiple inputs and one refund output
-    pub fn add_inputs_and_output(
+    pub fn pre_sign(
         &mut self,
-        inputs: &Vec<InputWithScript>,
-        keypair: &Keypair,
-        output_script_pubkey: ScriptBuf,
-    ) {
-        if self.tx.input.len() > 1 {
-            panic!("Cannot add any more inputs or outputs.");
+        context: &VerifierContext,
+        sec_nonces: &[SecNonce; 1],
+        agg_nonces: &[AggNonce; 1],
+    ) -> Result<[PartialSignature; 1], SigningError> {
+        let input_0_sig = self.sign_input_0_musig2(context, &sec_nonces[0], &agg_nonces[0]);
+        match [input_0_sig]
+            .into_iter()
+            .collect::<Result<Vec<PartialSignature>, SigningError>>()
+        {
+            Ok(sigs) => Ok(sigs.try_into().unwrap()),
+            Err(e) => Err(e),
         }
+    }
 
-        // check total input amount
-        let mut total_input_amount = Amount::from_sat(0);
-        for input in inputs {
-            total_input_amount += input.amount;
-        }
-        match total_input_amount.cmp(&self.input_amount_crowdfunding) {
-            Ordering::Less => panic!("Total input amount too low. Add additional input."),
-            Ordering::Greater => {
-                let discrepency = total_input_amount - self.input_amount_crowdfunding;
-                if discrepency.to_sat() >= DUST_AMOUNT {
-                    // add refund output
-                    let _output = TxOut {
-                        value: discrepency,
-                        script_pubkey: output_script_pubkey,
-                    };
-                    self.tx.output.push(_output);
-                }
-                // discrepency less than dust will be lost as relay fee
-            }
-            Ordering::Equal => {}
-        }
-
-        // add crowdfunding inputs
-        let sighash_type = bitcoin::EcdsaSighashType::AllPlusAnyoneCanPay;
-        let mut input_index = self.tx.input.len();
-        for input in inputs {
-            let _input = TxIn {
-                previous_output: input.outpoint,
-                script_sig: ScriptBuf::new(),
-                sequence: Sequence::MAX,
-                witness: Witness::default(),
-            };
-            self.tx.input.push(_input);
-
-            // add witness
-            populate_p2wsh_witness(
-                &mut self.tx,
-                input_index,
+    pub fn aggregate_pre_sigs(
+        &self,
+        context: &dyn BaseContext,
+        partial_signatures: &[Vec<PartialSignature>; 1],
+        agg_nonces: &[AggNonce; 1],
+    ) -> Result<[bitcoin::taproot::Signature; 1], Error> {
+        let input_index = 0;
+        let sig_index = 0;
+        let sighash_type = TapSighashType::SinglePlusAnyoneCanPay;
+        let input_0_sig = match generate_taproot_aggregated_signature(
+            context,
+            self.tx(),
+            &agg_nonces[sig_index],
+            input_index,
+            self.prev_outs(),
+            &self.prev_scripts()[input_index],
+            sighash_type,
+            partial_signatures[sig_index].clone(),
+        ) {
+            Ok(sig) => bitcoin::taproot::Signature {
+                signature: sig.into(),
                 sighash_type,
-                input.script,
-                input.amount,
-                &vec![&keypair],
-            );
-
-            input_index += 1;
-        }
+            },
+            Err(_) => return Err(Error::Other("Failed to aggregate signatures")),
+        };
+        Ok([input_0_sig])
     }
 
-    pub fn merge(&mut self, challenge: &ChallengeTransaction) {
-        merge_transactions(&mut self.tx, &challenge.tx);
+    pub fn push_pre_sigs(
+        &mut self,
+        connector_a: &ConnectorA,
+        pre_sigs: [bitcoin::taproot::Signature; 1],
+    ) {
+        self.push_input_0_signature(connector_a, pre_sigs[0].clone());
     }
-
-    pub fn min_crowdfunding_amount(&self) -> u64 { self.input_amount_crowdfunding.to_sat() }
 }
 
 impl BaseTransaction for ChallengeTransaction {
@@ -183,5 +187,7 @@ impl BaseTransaction for ChallengeTransaction {
 
         self.tx.clone()
     }
-    fn name(&self) -> &'static str { "Challenge" }
+    fn name(&self) -> &'static str {
+        "Challenge"
+    }
 }

@@ -5,7 +5,10 @@ use bitcoin::{
 use secp256k1::SECP256K1;
 use serde::{Deserialize, Serialize};
 
-use crate::{scripts::*, transactions::base::Input, connectors::base::*};
+use super::{
+    super::{scripts::*, transactions::base::Input},
+    base::*,
+};
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct ConnectorB {
@@ -13,12 +16,8 @@ pub struct ConnectorB {
     pub operator_taproot_public_key: XOnlyPublicKey,
 }
 
-// TODO: timelock & n-n-pubkey OR just operator-pubkey?
 impl ConnectorB {
-    pub fn new(
-        network: Network,
-        operator_taproot_public_key: &XOnlyPublicKey,
-    ) -> Self {
+    pub fn new(network: Network, operator_taproot_public_key: &XOnlyPublicKey) -> Self {
         ConnectorB {
             network,
             operator_taproot_public_key: *operator_taproot_public_key,
@@ -29,7 +28,9 @@ impl ConnectorB {
         generate_pay_to_pubkey_taproot_script(&self.operator_taproot_public_key)
     }
 
-    fn generate_taproot_leaf_0_tx_in(&self, input: &Input) -> TxIn { generate_default_tx_in(input) }
+    fn generate_taproot_leaf_0_tx_in(&self, input: &Input) -> TxIn {
+        generate_default_tx_in(input)
+    }
 }
 
 impl TaprootConnector for ConnectorB {

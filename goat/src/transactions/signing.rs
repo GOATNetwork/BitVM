@@ -4,7 +4,7 @@ use bitcoin::{
     sighash::{Prevouts, SighashCache},
     taproot::{LeafVersion, TaprootSpendInfo},
     Amount, EcdsaSighashType, PublicKey, Script, ScriptBuf, TapLeafHash, TapNodeHash,
-    TapSighashType, Transaction, TxOut,
+    TapSighashType, Transaction, TxIn, TxOut,
 };
 use secp256k1::SECP256K1;
 
@@ -49,7 +49,7 @@ pub fn push_p2wsh_signature_to_witness(
 }
 
 pub fn push_p2wsh_script_to_witness(tx: &mut Transaction, input_index: usize, script: &Script) {
-    tx.input[input_index].witness.push(script); // TODO to_bytes() may be needed
+    tx.input[input_index].witness.push(script);
 }
 
 pub fn populate_p2wsh_witness(
@@ -257,6 +257,30 @@ pub fn populate_taproot_input_witness(
     );
 }
 
+pub fn populate_taproot_txin_witness(
+    txin: &mut TxIn,
+    taproot_spend_info: &TaprootSpendInfo,
+    script: &Script,
+    unlock_data: Vec<Vec<u8>>,
+) {
+    // push unlock data
+    for element in unlock_data.iter() {
+        if element.len() == 1 && element[0] == 0 {
+            txin.witness.push(vec![]); // minimal encoding of 0 is an empty vector
+        } else {
+            txin.witness.push(element);
+        }
+    }
+
+    // push script and control block
+    let prevout_leaf = (ScriptBuf::from(script), LeafVersion::TapScript);
+    let control_block = taproot_spend_info
+        .control_block(&prevout_leaf)
+        .expect("Unable to create Control block");
+    txin.witness.push(prevout_leaf.0.to_bytes());
+    txin.witness.push(control_block.serialize());
+}
+
 /// Use this function to populate taproot input witness for
 /// scripts containing only OP_CHECKSIG verification.
 #[allow(clippy::too_many_arguments)]
@@ -332,7 +356,7 @@ fn generate_p2tr_key_spend_schnorr_signature(
     // If secp256k1 is updated to 0.30.0, the following line can be replaced with
     // let signature = keypair.sign_schnorr_no_aux_rand(&Message::from(sighash));
     let signature =
-        SECP256K1.sign_schnorr_no_aux_rand(&Message::from(sighash), &tweak_keypair.to_inner());
+        SECP256K1.sign_schnorr_no_aux_rand(&Message::from(sighash), &tweak_keypair.to_keypair());
 
     bitcoin::taproot::Signature {
         signature,

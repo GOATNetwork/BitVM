@@ -1,56 +1,45 @@
-use super::assert::utils::COMMIT_TX_NUM;
 use super::pre_signed_musig2::{verify_public_nonce, PreSignedMusig2Transaction};
-use bitcoin::{Amount, OutPoint, PublicKey, Script, Transaction, Txid, XOnlyPublicKey, consensus};
 use bitcoin::policy::{DEFAULT_MIN_RELAY_TX_FEE, DUST_RELAY_TX_FEE};
+use bitcoin::{consensus, Amount, OutPoint, PublicKey, Script, Transaction, Txid, XOnlyPublicKey};
 use core::cmp;
 use itertools::Itertools;
 use musig2::{secp256k1::schnorr::Signature, PubNonce};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use serde::{Serialize, Deserialize};
 
-pub const CROWDFUNDING_AMOUNT: u64 = 100_000; // 0.001 btc
-// for commonly used type in codebase - p2wsh txout
-// 67 = (32 + 4 + 1 + (107 / WITNESS_SCALE_FACTOR) + 4) for segwit TxOut
-// TODO: Use lower dust amount for other txout types
 pub const DUST_AMOUNT: u64 = (43 + 67) * DUST_RELAY_FEE_RATE;
 pub const MIN_RELAY_FEE_RATE: u64 = (DEFAULT_MIN_RELAY_TX_FEE / 1000) as u64;
 pub const DUST_RELAY_FEE_RATE: u64 = (DUST_RELAY_TX_FEE / 1000) as u64;
 
-// set reward percentage as 2% of peg in deposit
-pub const REWARD_PRECISION: u64 = 1000;
-pub const REWARD_MULTIPLIER: u64 = 20;
+pub const fn max(a: u64, b: u64) -> u64 {
+    [a, b][(a < b) as usize]
+}
 
-pub const MIN_RELAY_FEE_ASSERT_SET: u64 = MIN_RELAY_FEE_ASSERT_INITIAL
-    + MIN_RELAY_FEE_ASSERT_COMMIT * COMMIT_TX_NUM as u64
-    + MIN_RELAY_FEE_ASSERT_FINAL;
-// use largest fee from each depth
-// assert fee is big enough to cover disprove chain or take 1
-// disprove fee is big enough to cover take 2
-pub const PEG_OUT_FEE: u64 = MIN_RELAY_FEE_PEG_OUT_CONFIRM // depth 0
-    + MIN_RELAY_FEE_KICK_OFF // depth 1
-    + MIN_RELAY_FEE_ASSERT_SET // depth 2
-    + MIN_RELAY_FEE_DISPROVE; // depth 3
-pub const PEG_IN_FEE: u64 =
-    MIN_RELAY_FEE_PEG_IN_DEPOSIT + max(MIN_RELAY_FEE_PEG_IN_CONFIRM, MIN_RELAY_FEE_PEG_IN_REFUND);
-
-pub const fn max(a: u64, b: u64) -> u64 { [a, b][(a < b) as usize] }
-
-// TODO: set to larger value to be compatible with future tx modifications
-// TODO: consider use CPFP to avoid uncertainty
+// TBD: accurately calculate the relay fee
 pub const RELAY_FEE_BUFFER_MULTIPLIER: f32 = 1.2;
-pub const MIN_RELAY_FEE_KICK_OFF: u64 = relay_fee(3212);
-pub const MIN_RELAY_FEE_TAKE_1: u64 = relay_fee(288);
-pub const MIN_RELAY_FEE_TAKE_2: u64 = relay_fee(347);
-pub const MIN_RELAY_FEE_PEG_IN_DEPOSIT: u64 = relay_fee(122);
-pub const MIN_RELAY_FEE_PEG_IN_CONFIRM: u64 = relay_fee(173);
-pub const MIN_RELAY_FEE_PEG_IN_REFUND: u64 = relay_fee(138);
-pub const MIN_RELAY_FEE_PEG_OUT_CONFIRM: u64 = relay_fee(122);
-pub const MIN_RELAY_FEE_ASSERT: u64 = relay_fee(232);
-pub const MIN_RELAY_FEE_ASSERT_INITIAL: u64 = relay_fee(16380);
-pub const MIN_RELAY_FEE_ASSERT_COMMIT: u64 = relay_fee(98350);
-pub const MIN_RELAY_FEE_ASSERT_FINAL: u64 = relay_fee(490);
-pub const MIN_RELAY_FEE_CHALLENGE: u64 = relay_fee(317);
-pub const MIN_RELAY_FEE_DISPROVE: u64 = relay_fee(0); // let Challenger pay for disprove-tx
+pub const ACCELERATE_FEE_MULTIPLIER: u64 = 2;
+pub const MIN_RELAY_FEE_KICKOFF: u64 = relay_fee(500);
+pub const MIN_RELAY_FEE_TAKE_1: u64 = relay_fee(500);
+pub const MIN_RELAY_FEE_TAKE_2: u64 = relay_fee(500);
+pub const fn min_relay_fee_watchtower_challenge_init(watchtower_num: usize) -> u64 {
+    relay_fee(watchtower_num * 200 + 500)
+}
+pub const fn min_relay_fee_assert_init(num_assert_commits: usize) -> u64 {
+    relay_fee(num_assert_commits * 100 + 300)
+}
+pub const fn max_assert_cost(num_assert_commits: usize) -> u64 {
+    min_relay_fee_assert_init(num_assert_commits) + (num_assert_commits + 2) as u64 * DUST_AMOUNT
+}
+pub const fn max_watchtower_challenge_cost(num_watchtowers: usize) -> u64 {
+    min_relay_fee_watchtower_challenge_init(num_watchtowers)
+        + (num_watchtowers * 2 + 3) as u64 * DUST_AMOUNT
+}
+pub const fn max_pegout_cost(num_watchtowers: usize, num_assert_commits: usize) -> u64 {
+    max_assert_cost(num_assert_commits)
+        + max_watchtower_challenge_cost(num_watchtowers)
+        + MIN_RELAY_FEE_KICKOFF
+        + DUST_AMOUNT * 4
+}
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct Input {

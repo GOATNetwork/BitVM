@@ -319,6 +319,7 @@ pub fn populate_taproot_input_witness_with_signature(
     populate_taproot_input_witness(tx, input_index, taproot_spend_info, script, unlock_data);
 }
 
+#[allow(deprecated)]
 fn generate_p2tr_key_spend_schnorr_signature(
     tx: &mut Transaction,
     input_index: usize,

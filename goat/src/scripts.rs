@@ -1,9 +1,12 @@
 use bitcoin::{
     hashes::{ripemd160::Hash as Ripemd160, sha256::Hash as Sha256, Hash},
-    Address, CompressedPublicKey, Network, PubkeyHash, PublicKey, ScriptBuf, XOnlyPublicKey,
+    Address, Amount, CompressedPublicKey, Network, PubkeyHash, PublicKey, ScriptBuf, TxOut,
+    XOnlyPublicKey,
 };
 use bitvm::treepp::script;
 use std::{str::FromStr, sync::LazyLock};
+
+use crate::transactions::base::DUST_AMOUNT;
 
 // TODO replace these public keys
 pub static UNSPENDABLE_PUBLIC_KEY: LazyLock<PublicKey> = LazyLock::new(|| {
@@ -159,13 +162,99 @@ pub fn generate_timelock_taproot_script_address(
     )
 }
 
-pub fn generate_opreturn_script(
-    msg: Vec<u8>,
-) -> ScriptBuf {
-    assert!(msg.len() <= 75, "message must less than 75 bytes");
+pub fn generate_opreturn_script(msg: Vec<u8>) -> ScriptBuf {
+    assert!(msg.len() <= 80, "message must less than 80 bytes");
     script! {
         OP_RETURN
         {msg}
-    }.compile()
+    }
+    .compile()
 }
 
+pub fn p2a_amount() -> Amount {
+    Amount::from_sat(240)
+}
+
+pub fn p2a_script() -> ScriptBuf {
+    ScriptBuf::from_bytes(hex::decode("51024e73").unwrap())
+}
+
+pub fn p2a_output() -> TxOut {
+    TxOut {
+        value: p2a_amount(),
+        script_pubkey: p2a_script(),
+    }
+}
+
+pub fn generate_data_commitment_outputs(data: &[u8]) -> Vec<TxOut> {
+    let data_len = data.len();
+    if data_len <= 80 {
+        vec![TxOut {
+            value: Amount::ZERO,
+            script_pubkey: generate_opreturn_script(data.to_vec()),
+        }]
+    } else {
+        let mut txouts = vec![];
+        let mut data = data.to_vec();
+        let opreturn_len = data_len - (data_len - 80).div_ceil(32) * 32;
+        let opreturn_data = data.split_off(data_len - opreturn_len);
+        for chunk in data.chunks(32) {
+            txouts.push(TxOut {
+                value: Amount::from_sat(DUST_AMOUNT),
+                script_pubkey: script! {
+                    OP_0
+                    { chunk.to_vec() }
+                }
+                .compile(),
+            });
+        }
+        txouts.push(TxOut {
+            value: Amount::ZERO,
+            script_pubkey: generate_opreturn_script(opreturn_data),
+        });
+        txouts
+    }
+}
+
+pub fn is_valid_commitment_outputs(txouts: &[TxOut]) -> bool {
+    if txouts.is_empty() {
+        return false;
+    }
+    let last_txout = &txouts[txouts.len() - 1];
+    if !last_txout.script_pubkey.is_op_return() {
+        return false;
+    }
+    for txout in &txouts[..txouts.len() - 1] {
+        if !txout.script_pubkey.is_p2wsh() {
+            return false;
+        }
+    }
+    true
+}
+
+pub fn extract_data_from_commitment_outputs(txouts: &[TxOut]) -> Vec<u8> {
+    let mut data = vec![];
+    for txout in txouts {
+        let script = &txout.script_pubkey;
+        let instructions = script
+            .instructions_minimal()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        if let bitcoin::blockdata::script::Instruction::PushBytes(bytes) = &instructions[1] {
+            data.extend_from_slice(bytes.as_bytes());
+        }
+        if script.is_op_return() {
+            break;
+        }
+    }
+    data
+}
+
+#[test]
+fn test_commitment_outputs() {
+    let data = b"Hello, this is a test message for commitment outputs. It should be split into multiple outputs as it exceeds opreturn size limit.";
+    let outputs = generate_data_commitment_outputs(data);
+    assert!(is_valid_commitment_outputs(&outputs));
+    let extracted_data = extract_data_from_commitment_outputs(&outputs);
+    assert_eq!(extracted_data, data.to_vec());
+}

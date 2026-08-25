@@ -1,4 +1,3 @@
-use crate::bigint::U254;
 use crate::bn254::fq::Fq;
 use crate::bn254::fr::Fr;
 use crate::bn254::g1::G1Affine;
@@ -13,6 +12,7 @@ use super::elements::ElementType;
 use super::wrap_hasher::hash_messages;
 use crate::bn254::fq2::Fq2;
 
+#[allow(unused)]
 pub(crate) fn chunk_msm(
     input_ks: Vec<ark_ff::BigInt<4>>,
     qs: Vec<ark_bn254::G1Affine>,
@@ -21,17 +21,16 @@ pub(crate) fn chunk_msm(
     assert_eq!(input_ks.len(), NUM_PUBS);
     let num_pubs = input_ks.len();
 
-    let mut ks = (0..num_pubs)
-        .map(|_| ark_ff::BigInt::<4>::from(1u64))
-        .collect::<Vec<ark_ff::BigInt<4>>>();
-    let scalars_are_valid_elems = input_ks
+    let ks = input_ks
         .iter()
-        .filter(|f| **f < ark_bn254::Fr::MODULUS)
-        .count()
-        == num_pubs;
-    if scalars_are_valid_elems {
-        ks = input_ks.clone();
-    }
+        .map(|x| {
+            if *x < ark_bn254::Fr::MODULUS {
+                *x
+            } else {
+                ark_ff::BigInt::<4>::from(1u64)
+            }
+        })
+        .collect::<Vec<ark_ff::BigInt<4>>>();
 
     let chunks = msm::g1_multi_scalar_mul(qs.clone(), ks.into_iter().map(|f| f.into()).collect());
 
@@ -39,15 +38,14 @@ pub(crate) fn chunk_msm(
     // [hints, G1Acc]
 
     let mut chunk_scripts = vec![];
-    for (msm_tap_index, chunk) in chunks.iter().enumerate() {
+    for (msm_tap_index, (chunk, variable_index)) in chunks.iter().enumerate() {
         let ops_script = if msm_tap_index == 0 {
             script! {
                 { G1Affine::push( ark_bn254::G1Affine::new_unchecked(ark_bn254::Fq::ZERO, ark_bn254::Fq::ZERO))}
                 { Fr::fromaltstack()}
 
                 { Fr::copy(0)}
-                { Fr::push_hex(Fr::MODULUS) }
-                { U254::lessthan(1, 0) }
+                { Fr::is_valid() }
 
                 // [hints, G1Acc, k, 0/1]
                 OP_IF
@@ -73,11 +71,15 @@ pub(crate) fn chunk_msm(
         } else {
             script! {
                 // [hints, G1Acc] [G1AccDashHash, G1AccHash]
+
+                // Validity checks for G1Acc
+                { Fq::check_validity() } { Fq::check_validity() }
+                { G1Affine::fromaltstack() }
+
                 {Fr::fromaltstack()}
 
                 {Fr::copy(0)}
-                { Fr::push_hex(Fr::MODULUS) }
-                { U254::lessthan(1, 0) }
+                { Fr::is_valid() }
 
                 // [hints, G1Acc, k, 0/1] [G1AccDashHash, G1AccHash]
                 OP_IF
@@ -89,9 +91,7 @@ pub(crate) fn chunk_msm(
                     // [G1Acc, G1AccDash, 1] [G1AccDashHash, G1AccHash]
                 OP_ELSE
                     // [G1Acc, k]
-                    for _ in 0..num_pubs {
-                        {Fr::drop()}
-                    }
+                    {Fr::drop()}
                     {Fq::push(ark_bn254::Fq::ONE)}
                     {Fq::push(ark_bn254::Fq::ZERO)}
                     // [G1Acc, Mock_G1AccDash] [G1AccDashHash, G1AccHash]
@@ -118,11 +118,10 @@ pub(crate) fn chunk_msm(
             {ops_script}
             // {hash_script}
         };
-
-        if scalars_are_valid_elems {
-            chunk_scripts.push((chunk.0, scalars_are_valid_elems, sc, chunk.2.clone()));
+        if input_ks[*variable_index] < ark_bn254::Fr::MODULUS {
+            chunk_scripts.push((chunk.0, true, sc, chunk.2.clone()));
         } else {
-            chunk_scripts.push((chunk.0, scalars_are_valid_elems, sc, vec![]));
+            chunk_scripts.push((chunk.0, false, sc, vec![]));
         }
     }
     chunk_scripts
@@ -139,11 +138,14 @@ pub(crate) fn chunk_hash_p(
     let (tx, qx, ty, qy) = (hint_in_t.x, hint_in_q.x, hint_in_t.y, hint_in_q.y);
     let t = ark_bn254::G1Affine::new_unchecked(tx, ty);
     let q = ark_bn254::G1Affine::new_unchecked(qx, qy);
-    let (add_scr, add_hints) = G1Affine::hinted_check_add(t, q);
+    let (add_scr, add_hints) = G1Affine::hinted_check_add_prevent_degenerate(t, q);
     let r = (t + q).into_affine();
-
     let ops_script = script! {
         // [t] [hash_r, hash_t]
+
+        //Validity checks
+        { Fq2::check_validity() } { Fq2::fromaltstack() }
+
         { Fq2::copy(0)}
         // [t, t]
         {G1Affine::push(q)}

@@ -2,12 +2,11 @@ use bitcoin::hex::DisplayHex;
 use bitcoin::Witness;
 use serde::{Deserialize, Serialize};
 
-use crate::signatures::winternitz_hash::WINTERNITZ_VARIABLE_VERIFIER;
 use crate::treepp::{script, Script};
 use crate::{
-    signatures::{
-        winternitz::{generate_public_key, Parameters, PublicKey, SecretKey},
-        winternitz_hash::{sign_hash, WINTERNITZ_MESSAGE_VERIFIER},
+    signatures::winternitz::{
+        generate_public_key, BruteforceVerifier, ListpickVerifier, Parameters, PublicKey,
+        SecretKey, ToBytesConverter, VoidConverter, Winternitz,
     },
     u32::u32_std::u32_compress,
 };
@@ -18,29 +17,53 @@ pub struct WinternitzSecret {
     parameters: Parameters,
 }
 
-// Bits per digit (block)
+/// Bits per digit.
 pub const LOG_D: u32 = 4;
 
+/// Winternitz verifier, returns the message in digits.
+pub const WINTERNITZ_MESSAGE_VERIFIER: Winternitz<ListpickVerifier, VoidConverter> =
+    Winternitz::new();
+
+/// Winternitz verifier, returns the message in bytes.
+pub const WINTERNITZ_VARIABLE_VERIFIER: Winternitz<ListpickVerifier, ToBytesConverter> =
+    Winternitz::new();
+
+/// Winternitz verifier for compact signature representation, returns the message in bytes.
+pub const WINTERNITZ_MESSAGE_COMPACT_VERIFIER: Winternitz<BruteforceVerifier, VoidConverter> =
+    Winternitz::new();
+
 impl WinternitzSecret {
-    /// Generate a random 160 bit number and return a hex encoded representation of it.
-    pub fn new(message_size: usize) -> Self {
+    /// Creates a secret key from a 160-bit random number,
+    /// for signing messages of the given `message_len` (in bytes).
+    pub fn new(message_len: usize) -> Self {
         let mut buffer = [0u8; 20];
         let mut rng = rand::rngs::OsRng;
         rand::RngCore::fill_bytes(&mut rng, &mut buffer);
 
-        // Best parameters depend on the stack depth, without that limitation best option is LOG_D = 4 and used Winternitz version here
-        //let parameters = WINTERNITZ_HASH_PARAMETERS;
-        let parameters = Parameters::new_by_bit_length(message_size as u32 * 8, LOG_D);
-        WinternitzSecret {
-            secret_key: buffer.to_lower_hex_string().into(),
+        Self::from_bytes(message_len, buffer.to_lower_hex_string().into())
+    }
+
+    /// Creates a secret key from the given `secret_bytes`,
+    /// for signing messages of the given `message_len` (in bytes).
+    pub fn from_bytes(message_len: usize, secret_bytes: Vec<u8>) -> Self {
+        let parameters = Parameters::new_by_bit_length(message_len as u32 * 8, LOG_D);
+        Self {
+            secret_key: secret_bytes,
             parameters,
         }
     }
 
+    /// Creates a secret key from the given `secret` string.
+    ///
+    /// ## Warning
+    ///
+    /// The `secret` string is converted into ASCII bytes,
+    /// which are in turn converted into lower hex ASCII bytes.
+    #[deprecated(note = "It is safer to use WinternitzSecret::from_bytes")]
     pub fn from_string(secret: &str, parameters: &Parameters) -> Self {
         WinternitzSecret {
             secret_key: secret.as_bytes().to_lower_hex_string().into(),
-            parameters: parameters.clone(),
+            parameters: *parameters,
         }
     }
 }
@@ -55,7 +78,7 @@ impl From<&WinternitzSecret> for WinternitzPublicKey {
     fn from(secret: &WinternitzSecret) -> Self {
         WinternitzPublicKey {
             public_key: generate_public_key(&secret.parameters, &secret.secret_key),
-            parameters: secret.parameters.clone(),
+            parameters: secret.parameters,
         }
     }
 }
@@ -98,13 +121,6 @@ pub fn generate_winternitz_checksig_leave_variable(
     }
 }
 
-pub fn generate_winternitz_hash_witness(signing_inputs: &WinternitzSigningInputs) -> Witness {
-    sign_hash(
-        &signing_inputs.signing_key.secret_key,
-        signing_inputs.message,
-    )
-}
-
 pub fn generate_winternitz_witness(signing_inputs: &WinternitzSigningInputs) -> Witness {
     WINTERNITZ_MESSAGE_VERIFIER.sign(
         &signing_inputs.signing_key.parameters,
@@ -135,11 +151,7 @@ pub fn winternitz_message_checksig_verify(
 mod tests {
     use super::*;
     use super::{WinternitzPublicKey, WinternitzSecret};
-    use crate::{
-        bn254::g1::G1Affine,
-        execute_script,
-        signatures::{utils::digits_to_number, winternitz::generate_public_key},
-    };
+    use crate::{bn254::g1::G1Affine, execute_script, signatures::utils};
     use crate::{execute_script_with_inputs, ExecuteInfo};
     use ark_ff::UniformRand as _;
     use ark_std::test_rng;
@@ -149,6 +161,7 @@ mod tests {
 
     const BLAKE3_HASH_LENGTH: usize = 20;
 
+    /// Extracts the items of the final stack after execution.
     fn extract_witness_from_stack(res: ExecuteInfo) -> Vec<Vec<u8>> {
         res.final_stack.0.iter_str().fold(vec![], |mut vector, x| {
             vector.push(x);
@@ -156,9 +169,11 @@ mod tests {
         })
     }
 
-    /// Compare two elements of n length.
-    /// If them are not equal, return script's failure directly.
-    pub fn equalverify(n: usize) -> Script {
+    /// Returns a Bitcoin script that compares two elements of length `n`.
+    ///
+    /// The script consumes its inputs.
+    /// If the two elements are not equal, then the script fails immediately.
+    fn equalverify(n: usize) -> Script {
         script!(
             for _ in 0..n {
                 OP_TOALTSTACK
@@ -176,7 +191,10 @@ mod tests {
         )
     }
 
-    pub fn u32_witness_to_bytes(witness: Vec<Vec<u8>>) -> Vec<u8> {
+    /// Convert the raw Bitcoin witness into a byte vector.
+    ///
+    /// The witness encodes the signed message in digit form.
+    fn u32_witness_to_bytes(witness: Vec<Vec<u8>>) -> Vec<u8> {
         let mut bytes = vec![];
         for element in witness.iter() {
             let limb = read_scriptint(element).unwrap() as u32;
@@ -199,7 +217,7 @@ mod tests {
           },
           ).to_vec() }
           { winternitz_message_checksig(&public_key) }
-          { digits_to_number::<{ 4 * 2}, { LOG_D as usize }>() }
+          { utils::digits_to_number::<{ 4 * 2}, { LOG_D as usize }>() }
           { start_time_block_number }
           OP_EQUAL
         };
@@ -227,7 +245,7 @@ mod tests {
         let public_key = WinternitzPublicKey::from(&secret);
         let reference_public_key = generate_public_key(&secret.parameters, &secret.secret_key);
 
-        for i in 0..secret.parameters.total_length() {
+        for i in 0..secret.parameters.total_digit_len() {
             assert_eq!(
                 public_key.public_key[i as usize],
                 reference_public_key[i as usize]
@@ -242,9 +260,9 @@ mod tests {
 
         assert_eq!(
             public_key.public_key.len(),
-            public_key.parameters.total_length() as usize
+            public_key.parameters.total_digit_len() as usize
         );
-        for i in 0..public_key.parameters.total_length() {
+        for i in 0..public_key.parameters.total_digit_len() {
             assert_eq!(
                 public_key.public_key[i as usize].len(),
                 20,

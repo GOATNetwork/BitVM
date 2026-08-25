@@ -5,6 +5,8 @@ use bitcoin::{
 use secp256k1::SECP256K1;
 use serde::{Deserialize, Serialize};
 
+use crate::{constants::CONNECTOR_A_TIMELOCK, utils::num_blocks_per_network};
+
 use super::{
     super::{scripts::*, transactions::base::Input},
     base::*,
@@ -15,6 +17,7 @@ pub struct ConnectorA {
     pub network: Network,
     pub operator_taproot_public_key: XOnlyPublicKey,
     pub n_of_n_taproot_public_key: XOnlyPublicKey,
+    pub take1_blocks_timelock: u32,
 }
 
 impl ConnectorA {
@@ -27,20 +30,28 @@ impl ConnectorA {
             network,
             operator_taproot_public_key: *operator_taproot_public_key,
             n_of_n_taproot_public_key: *n_of_n_taproot_public_key,
+            take1_blocks_timelock: num_blocks_per_network(network, CONNECTOR_A_TIMELOCK),
         }
     }
 
     fn generate_taproot_leaf_0_script(&self) -> ScriptBuf {
-        generate_pay_to_pubkey_taproot_script(&self.operator_taproot_public_key)
+        generate_timelock_taproot_script(
+            &self.operator_taproot_public_key,
+            self.take1_blocks_timelock,
+        )
     }
 
-    fn generate_taproot_leaf_0_tx_in(&self, input: &Input) -> TxIn { generate_default_tx_in(input) }
+    fn generate_taproot_leaf_0_tx_in(&self, input: &Input) -> TxIn {
+        generate_timelock_tx_in(input, self.take1_blocks_timelock)
+    }
 
     fn generate_taproot_leaf_1_script(&self) -> ScriptBuf {
-        generate_pay_to_pubkey_taproot_script(&self.operator_taproot_public_key)
+        generate_pay_to_pubkey_taproot_script(&self.n_of_n_taproot_public_key)
     }
 
-    fn generate_taproot_leaf_1_tx_in(&self, input: &Input) -> TxIn { generate_default_tx_in(input) }
+    fn generate_taproot_leaf_1_tx_in(&self, input: &Input) -> TxIn {
+        generate_default_tx_in(input)
+    }
 }
 
 impl TaprootConnector for ConnectorA {

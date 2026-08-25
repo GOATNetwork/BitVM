@@ -1,21 +1,25 @@
 #![allow(clippy::too_many_arguments)]
 use bitcoin::{
     sighash::{Prevouts, SighashCache},
-    taproot::LeafVersion, 
+    taproot::LeafVersion,
     Script, TapLeafHash, TapSighashType, Transaction, TxOut,
 };
 use musig2::{
     aggregate_partial_signatures,
     errors::{SigningError, VerifyError},
-    secp::{MaybeScalar, Point}, 
+    secp::{MaybeScalar, Point},
     sign_partial, AggNonce, KeyAggContext, LiftedSignature, PartialSignature, PubNonce, SecNonce,
 };
 
 use super::super::contexts::{base::BaseContext, verifier::VerifierContext};
 
-pub fn generate_nonce() -> SecNonce { SecNonce::build(&mut rand::rngs::OsRng).build() }
+pub fn generate_nonce() -> SecNonce {
+    SecNonce::build(&mut rand::rngs::OsRng).build()
+}
 
-pub fn generate_aggregated_nonce(nonces: &Vec<PubNonce>) -> AggNonce { AggNonce::sum(nonces) }
+pub fn generate_aggregated_nonce(nonces: &Vec<PubNonce>) -> AggNonce {
+    AggNonce::sum(nonces)
+}
 
 pub fn generate_taproot_partial_signature(
     context: &VerifierContext,
@@ -89,5 +93,3 @@ pub fn generate_taproot_aggregated_signature(
         sighash_cache,
     )
 }
-
-
