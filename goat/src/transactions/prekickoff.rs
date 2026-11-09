@@ -428,7 +428,11 @@ impl ForceSkipKickoffTransaction {
 
     /// Signs input 0. Input 1 spends the force-skip connector and is signed
     /// by the committee through `pre_sign`.
-    pub fn pre_sign_and_push(&mut self, context: &OperatorContext, kickoff_connector: &KickoffConnector) {
+    pub fn pre_sign_and_push(
+        &mut self,
+        context: &OperatorContext,
+        kickoff_connector: &KickoffConnector,
+    ) {
         self.sign_input_0(context, kickoff_connector);
     }
 }
@@ -636,7 +640,11 @@ impl QuickChallengeTransaction {
 
     /// Signs input 0. Input 1 spends the force-skip connector and is signed
     /// by the committee through `pre_sign`.
-    pub fn pre_sign_and_push(&mut self, context: &OperatorContext, guardian_connector: &GuardianConnector) {
+    pub fn pre_sign_and_push(
+        &mut self,
+        context: &OperatorContext,
+        guardian_connector: &GuardianConnector,
+    ) {
         self.sign_input_0(context, guardian_connector);
     }
 }
