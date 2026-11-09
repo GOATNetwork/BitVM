@@ -172,22 +172,25 @@ impl TaprootConnector for KickoffConnector {
     }
 }
 
+/// Output 0 of the next Pre-Kickoff, spent only by the committee-signed
+/// Quick-Challenge or Force-Skip-Kickoff. The operator holds no key to it, so
+/// it cannot sweep the output and make those penalties unspendable.
 #[derive(Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct ForceSkipConnector {
     pub network: Network,
-    pub operator_taproot_public_key: XOnlyPublicKey,
+    pub n_of_n_taproot_public_key: XOnlyPublicKey,
 }
 
 impl ForceSkipConnector {
-    pub fn new(network: Network, operator_taproot_public_key: &XOnlyPublicKey) -> Self {
+    pub fn new(network: Network, n_of_n_taproot_public_key: &XOnlyPublicKey) -> Self {
         ForceSkipConnector {
             network,
-            operator_taproot_public_key: *operator_taproot_public_key,
+            n_of_n_taproot_public_key: *n_of_n_taproot_public_key,
         }
     }
 
     fn generate_taproot_leaf_0_script(&self) -> ScriptBuf {
-        generate_pay_to_pubkey_taproot_script(&self.operator_taproot_public_key)
+        generate_pay_to_pubkey_taproot_script(&self.n_of_n_taproot_public_key)
     }
 
     fn generate_taproot_leaf_0_tx_in(&self, input: &Input) -> TxIn {
@@ -214,7 +217,7 @@ impl TaprootConnector for ForceSkipConnector {
         TaprootBuilder::new()
             .add_leaf(0, self.generate_taproot_leaf_0_script())
             .expect("Unable to add leaf 0")
-            .finalize(SECP256K1, self.operator_taproot_public_key)
+            .finalize(SECP256K1, self.n_of_n_taproot_public_key)
             .expect("Unable to finalize taproot")
     }
 

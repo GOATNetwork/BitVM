@@ -1,6 +1,7 @@
 use bitcoin::{
     absolute, consensus, Address, Amount, ScriptBuf, TapSighashType, Transaction, TxIn, TxOut,
 };
+use musig2::{errors::SigningError, AggNonce, PartialSignature, SecNonce};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -10,10 +11,18 @@ use crate::{
             ForceSkipConnector, GuardianConnector, KickoffConnector, PrekickoffConnector,
         },
     },
-    contexts::operator::OperatorContext,
+    contexts::{base::BaseContext, committee::CommitteeContext, operator::OperatorContext},
     error::{Error, TransactionError::InsufficientInputAmount},
     scripts::p2a_output,
-    transactions::signing::populate_taproot_input_witness_default,
+    transactions::{
+        signing::{
+            populate_taproot_input_witness_default,
+            push_taproot_leaf_script_and_control_block_to_witness,
+        },
+        signing_musig2::{
+            generate_taproot_aggregated_signature, generate_taproot_partial_signature,
+        },
+    },
 };
 
 use super::{base::*, pre_signed::*};
@@ -266,7 +275,7 @@ impl ForceSkipKickoffTransaction {
             input_1,
         );
 
-        this.pre_sign_and_push(context, kickoff_connector, next_force_skip_connector);
+        this.pre_sign_and_push(context, kickoff_connector);
 
         this
     }
@@ -325,29 +334,106 @@ impl ForceSkipKickoffTransaction {
         );
     }
 
-    pub fn sign_input_1(
+    fn sign_input_1_musig2(
         &mut self,
-        context: &OperatorContext,
+        context: &CommitteeContext,
+        sec_nonce: &SecNonce,
+        agg_nonce: &AggNonce,
+    ) -> Result<PartialSignature, SigningError> {
+        let input_index = 1;
+        let sighash_type = TapSighashType::None;
+        generate_taproot_partial_signature(
+            context,
+            self.tx(),
+            sec_nonce,
+            agg_nonce,
+            input_index,
+            self.prev_outs(),
+            &self.prev_scripts()[input_index],
+            sighash_type,
+        )
+    }
+
+    fn push_input_1_signature(
+        &mut self,
         next_force_skip_connector: &ForceSkipConnector,
+        input_1_sig: bitcoin::taproot::Signature,
     ) {
         let input_index = 1;
-        pre_sign_taproot_input_default(
-            self,
+        let script = self.prev_scripts()[input_index].clone();
+        let spend_info = next_force_skip_connector.generate_taproot_spend_info();
+        let tx_mut = self.tx_mut();
+        tx_mut.input[input_index]
+            .witness
+            .push(input_1_sig.serialize());
+        push_taproot_leaf_script_and_control_block_to_witness(
+            tx_mut,
             input_index,
-            TapSighashType::None,
-            next_force_skip_connector.generate_taproot_spend_info(),
-            &vec![&context.operator_keypair],
+            &spend_info,
+            &script,
         );
     }
 
+    pub fn pre_sign(
+        &mut self,
+        context: &CommitteeContext,
+        sec_nonces: &[SecNonce; 1],
+        agg_nonces: &[AggNonce; 1],
+    ) -> Result<[PartialSignature; 1], SigningError> {
+        let input_1_sig = self.sign_input_1_musig2(context, &sec_nonces[0], &agg_nonces[0]);
+        match [input_1_sig]
+            .into_iter()
+            .collect::<Result<Vec<PartialSignature>, SigningError>>()
+        {
+            Ok(sigs) => Ok(sigs.try_into().unwrap()),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn aggregate_pre_sigs(
+        &self,
+        context: &dyn BaseContext,
+        partial_signatures: &[Vec<PartialSignature>; 1],
+        agg_nonces: &[AggNonce; 1],
+    ) -> Result<[bitcoin::taproot::Signature; 1], Error> {
+        let input_index = 1;
+        let sig_index = 0;
+        let sighash_type = TapSighashType::None;
+        let input_1_sig = match generate_taproot_aggregated_signature(
+            context,
+            self.tx(),
+            &agg_nonces[sig_index],
+            input_index,
+            self.prev_outs(),
+            &self.prev_scripts()[input_index],
+            sighash_type,
+            partial_signatures[sig_index].clone(),
+        ) {
+            Ok(sig) => bitcoin::taproot::Signature {
+                signature: sig.into(),
+                sighash_type,
+            },
+            Err(_) => return Err(Error::Other("Failed to aggregate signatures")),
+        };
+        Ok([input_1_sig])
+    }
+
+    pub fn push_pre_sigs(
+        &mut self,
+        next_force_skip_connector: &ForceSkipConnector,
+        pre_sigs: [bitcoin::taproot::Signature; 1],
+    ) {
+        self.push_input_1_signature(next_force_skip_connector, pre_sigs[0]);
+    }
+
+    /// Signs input 0. Input 1 spends the force-skip connector and is signed
+    /// by the committee through `pre_sign`.
     pub fn pre_sign_and_push(
         &mut self,
         context: &OperatorContext,
         kickoff_connector: &KickoffConnector,
-        next_force_skip_connector: &ForceSkipConnector,
     ) {
         self.sign_input_0(context, kickoff_connector);
-        self.sign_input_1(context, next_force_skip_connector);
     }
 }
 impl BaseTransaction for ForceSkipKickoffTransaction {
@@ -399,7 +485,7 @@ impl QuickChallengeTransaction {
             input_1,
         );
 
-        this.pre_sign_and_push(context, guardian_connector, next_force_skip_connector);
+        this.pre_sign_and_push(context, guardian_connector);
 
         this
     }
@@ -460,29 +546,106 @@ impl QuickChallengeTransaction {
         );
     }
 
-    pub fn sign_input_1(
+    fn sign_input_1_musig2(
         &mut self,
-        context: &OperatorContext,
+        context: &CommitteeContext,
+        sec_nonce: &SecNonce,
+        agg_nonce: &AggNonce,
+    ) -> Result<PartialSignature, SigningError> {
+        let input_index = 1;
+        let sighash_type = TapSighashType::None;
+        generate_taproot_partial_signature(
+            context,
+            self.tx(),
+            sec_nonce,
+            agg_nonce,
+            input_index,
+            self.prev_outs(),
+            &self.prev_scripts()[input_index],
+            sighash_type,
+        )
+    }
+
+    fn push_input_1_signature(
+        &mut self,
         next_force_skip_connector: &ForceSkipConnector,
+        input_1_sig: bitcoin::taproot::Signature,
     ) {
         let input_index = 1;
-        pre_sign_taproot_input_default(
-            self,
+        let script = self.prev_scripts()[input_index].clone();
+        let spend_info = next_force_skip_connector.generate_taproot_spend_info();
+        let tx_mut = self.tx_mut();
+        tx_mut.input[input_index]
+            .witness
+            .push(input_1_sig.serialize());
+        push_taproot_leaf_script_and_control_block_to_witness(
+            tx_mut,
             input_index,
-            TapSighashType::None,
-            next_force_skip_connector.generate_taproot_spend_info(),
-            &vec![&context.operator_keypair],
+            &spend_info,
+            &script,
         );
     }
 
+    pub fn pre_sign(
+        &mut self,
+        context: &CommitteeContext,
+        sec_nonces: &[SecNonce; 1],
+        agg_nonces: &[AggNonce; 1],
+    ) -> Result<[PartialSignature; 1], SigningError> {
+        let input_1_sig = self.sign_input_1_musig2(context, &sec_nonces[0], &agg_nonces[0]);
+        match [input_1_sig]
+            .into_iter()
+            .collect::<Result<Vec<PartialSignature>, SigningError>>()
+        {
+            Ok(sigs) => Ok(sigs.try_into().unwrap()),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn aggregate_pre_sigs(
+        &self,
+        context: &dyn BaseContext,
+        partial_signatures: &[Vec<PartialSignature>; 1],
+        agg_nonces: &[AggNonce; 1],
+    ) -> Result<[bitcoin::taproot::Signature; 1], Error> {
+        let input_index = 1;
+        let sig_index = 0;
+        let sighash_type = TapSighashType::None;
+        let input_1_sig = match generate_taproot_aggregated_signature(
+            context,
+            self.tx(),
+            &agg_nonces[sig_index],
+            input_index,
+            self.prev_outs(),
+            &self.prev_scripts()[input_index],
+            sighash_type,
+            partial_signatures[sig_index].clone(),
+        ) {
+            Ok(sig) => bitcoin::taproot::Signature {
+                signature: sig.into(),
+                sighash_type,
+            },
+            Err(_) => return Err(Error::Other("Failed to aggregate signatures")),
+        };
+        Ok([input_1_sig])
+    }
+
+    pub fn push_pre_sigs(
+        &mut self,
+        next_force_skip_connector: &ForceSkipConnector,
+        pre_sigs: [bitcoin::taproot::Signature; 1],
+    ) {
+        self.push_input_1_signature(next_force_skip_connector, pre_sigs[0]);
+    }
+
+    /// Signs input 0. Input 1 spends the force-skip connector and is signed
+    /// by the committee through `pre_sign`.
     pub fn pre_sign_and_push(
         &mut self,
         context: &OperatorContext,
         guardian_connector: &GuardianConnector,
-        next_force_skip_connector: &ForceSkipConnector,
     ) {
         self.sign_input_0(context, guardian_connector);
-        self.sign_input_1(context, next_force_skip_connector);
     }
 }
 impl BaseTransaction for QuickChallengeTransaction {
